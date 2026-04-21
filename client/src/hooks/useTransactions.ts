@@ -150,10 +150,15 @@ export function useSpendingByDay(days: number = 30) {
       dailyTotals[date] = (dailyTotals[date] || 0) + payment.amount;
     }
 
-    // Fill in missing days with 0
+    // Fill in missing days with 0. Step back using local calendar
+    // arithmetic (setDate) rather than subtracting fixed milliseconds:
+    // spring-forward days are 23h and fall-back days are 25h, so
+    // `now - i * 86400000` double-counts or skips a day once a year
+    // for DST-observing timezones.
     const result: { date: string; amount: number }[] = [];
     for (let i = days - 1; i >= 0; i--) {
-      const date = formatLocalDay(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const date = formatLocalDay(day.getTime());
       result.push({
         date,
         amount: dailyTotals[date] || 0,

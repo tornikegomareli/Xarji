@@ -8,6 +8,10 @@ html, body {
   background: #0c0c0e;
   font-family: 'Inter Tight', system-ui, sans-serif;
   min-height: 100vh;
+  /* Mobile browsers include/exclude chrome height when computing vh;
+     dvh accounts for that, and browsers that don't support dvh just
+     fall back to the 100vh value above. */
+  min-height: 100dvh;
   color: #f2f2f4;
 }
 
@@ -21,7 +25,7 @@ html, body {
   font-family: 'Noto Sans Georgian', 'Inter Tight', system-ui, sans-serif;
 }
 
-#root { min-height: 100vh; }
+#root { min-height: 100vh; min-height: 100dvh; }
 
 button { font: inherit; }
 
