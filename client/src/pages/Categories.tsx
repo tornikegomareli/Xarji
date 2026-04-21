@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTheme, useViewport } from "../ink/theme";
 import { Card, CardLabel, CardTitle, LinkBtn, PageHeader } from "../ink/primitives";
 import { AreaChart, Donut, HBar } from "../ink/charts";
@@ -19,6 +20,7 @@ interface CatAgg {
 export function Categories() {
   const T = useTheme();
   const vp = useViewport();
+  const navigate = useNavigate();
   const now = new Date();
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
@@ -320,7 +322,14 @@ export function Categories() {
             <Card pad="20px 22px" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                 <CardTitle>Recent in {selCat?.name}</CardTitle>
-                <LinkBtn>All →</LinkBtn>
+                <LinkBtn
+                  onClick={() =>
+                    selectedId &&
+                    navigate(`/transactions?category=${encodeURIComponent(selectedId)}`)
+                  }
+                >
+                  All →
+                </LinkBtn>
               </div>
               <div style={{ overflowY: "auto", flex: 1 }}>
                 {selTx.length === 0 ? (

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTheme, useViewport } from "../ink/theme";
 import { Card, CardLabel, PageHeader } from "../ink/primitives";
 import { TxRow, type InkTx } from "../ink/TxRow";
@@ -16,9 +17,20 @@ export function Transactions() {
   const { failedPayments } = useFailedPayments();
   const { senders } = useBankSenders();
 
+  // `?category=<id>` pre-selects the category filter on load. Categories
+  // page navigates here with this param when the user clicks "All →" on
+  // a category's recent-transactions card. Values that don't match a
+  // known category id fall through to the "all" default.
+  const [searchParams] = useSearchParams();
+  const initialCat = (() => {
+    const raw = searchParams.get("category");
+    if (!raw) return "all";
+    return DEFAULT_CATEGORIES.some((c) => c.id === raw) ? raw : "all";
+  })();
+
   const [search, setSearch] = useState("");
   const [bank, setBank] = useState("all");
-  const [cat, setCat] = useState("all");
+  const [cat, setCat] = useState(initialCat);
   const [kind, setKind] = useState<TxKind>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
