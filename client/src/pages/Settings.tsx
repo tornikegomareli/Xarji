@@ -4,6 +4,7 @@ import { Card, CardTitle, LiveDot, PageHeader, Row, Toggle } from "../ink/primit
 import { useBankSenders } from "../hooks/useBankSenders";
 import { useDeleteAllData } from "../hooks/useDeleteAllData";
 import { usePayments, useFailedPayments } from "../hooks/useTransactions";
+import { useCredits } from "../hooks/useCredits";
 
 export function Settings() {
   const T = useTheme();
@@ -12,6 +13,7 @@ export function Settings() {
   const { deleteAllData, isDeleting, totalCount } = useDeleteAllData();
   const { payments } = usePayments();
   const { failedPayments } = useFailedPayments();
+  const { credits } = useCredits();
 
   const [confirm, setConfirm] = useState(false);
   const [newSenderId, setNewSenderId] = useState("");
@@ -33,7 +35,10 @@ export function Settings() {
   };
 
   const handleExport = () => {
-    const payload = { exportedAt: Date.now(), payments, failedPayments };
+    // Include every dataset the dashboard reads so a re-import or external
+    // analysis has a complete picture. Missing `credits` here silently drops
+    // every incoming-money row from the backup.
+    const payload = { exportedAt: Date.now(), payments, failedPayments, credits };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
