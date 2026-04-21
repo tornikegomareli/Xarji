@@ -185,11 +185,38 @@ export function useViewport() {
 
 const STORAGE_KEY = "xarji-tweaks";
 
+const ALLOWED_MODES: readonly InkMode[] = ["dark", "light"];
+const ALLOWED_ACCENTS: readonly InkAccent[] = ["coral", "amber", "emerald", "azure", "violet", "rose"];
+const ALLOWED_DENSITIES: readonly InkDensity[] = ["spacious", "balanced", "dense"];
+const ALLOWED_FONT_PAIRS: readonly InkFontPair[] = ["modern", "classic", "editorial"];
+const ALLOWED_CURRENCY_MODES: readonly InkCurrencyMode[] = ["gel", "all"];
+const ALLOWED_TIME_DEFAULTS: readonly InkTimeDefault[] = ["today", "week", "month", "year"];
+
+function pickEnum<T extends string>(raw: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof raw === "string" && (allowed as readonly string[]).includes(raw) ? (raw as T) : fallback;
+}
+
+/**
+ * Load tweaks from localStorage, defaulting every field that isn't a
+ * valid member of its allowed enum. Without this, a stale or corrupted
+ * storage entry (e.g. `{ currencyMode: "banana" }` left over from a
+ * previous schema) leaks straight into buildTheme and the UI ends up
+ * in an impossible state until the user clears storage.
+ */
 export function loadTweaks(): InkTweaks {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_TWEAKS;
-    return { ...DEFAULT_TWEAKS, ...JSON.parse(raw) };
+    const rawStr = localStorage.getItem(STORAGE_KEY);
+    if (!rawStr) return DEFAULT_TWEAKS;
+    const raw = JSON.parse(rawStr) as Partial<Record<keyof InkTweaks, unknown>>;
+    return {
+      mode: pickEnum(raw.mode, ALLOWED_MODES, DEFAULT_TWEAKS.mode),
+      accent: pickEnum(raw.accent, ALLOWED_ACCENTS, DEFAULT_TWEAKS.accent),
+      density: pickEnum(raw.density, ALLOWED_DENSITIES, DEFAULT_TWEAKS.density),
+      fontPair: pickEnum(raw.fontPair, ALLOWED_FONT_PAIRS, DEFAULT_TWEAKS.fontPair),
+      currencyMode: pickEnum(raw.currencyMode, ALLOWED_CURRENCY_MODES, DEFAULT_TWEAKS.currencyMode),
+      chartsVisible: typeof raw.chartsVisible === "boolean" ? raw.chartsVisible : DEFAULT_TWEAKS.chartsVisible,
+      timeDefault: pickEnum(raw.timeDefault, ALLOWED_TIME_DEFAULTS, DEFAULT_TWEAKS.timeDefault),
+    };
   } catch {
     return DEFAULT_TWEAKS;
   }
