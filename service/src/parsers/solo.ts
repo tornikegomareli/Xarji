@@ -21,7 +21,7 @@
 import type { RawMessage } from "../db-reader";
 import type { BankParser, Transaction, TransactionKind, TransactionStatus } from "./types";
 import { directionOf } from "./types";
-import { generateTransactionId, parseFlexibleAmount, parseDateDotted } from "./shared";
+import { generateTransactionId, parseFlexibleAmount, parseDateDotted, mergeDateAndTime } from "./shared";
 
 const BANK_KEY = "SOLO";
 
@@ -253,7 +253,10 @@ function parse(raw: RawMessage): Transaction | null {
     currency,
     merchant,
     cardLastDigits: parseCard(text),
-    transactionDate: parseDateDotted(text) ?? raw.timestamp,
+    transactionDate: (() => {
+      const ymd = parseDateDotted(text);
+      return ymd ? mergeDateAndTime(ymd, raw.timestamp) : raw.timestamp;
+    })(),
     messageTimestamp: raw.timestamp,
     rawMessage: text,
     failureReason,

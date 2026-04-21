@@ -25,6 +25,7 @@ import {
   parseFlexibleAmount,
   parseDateSlashed,
   stripTrailingNoise,
+  mergeDateAndTime,
 } from "./shared";
 
 const BANK_KEY = "TBC";
@@ -195,7 +196,10 @@ function parse(raw: RawMessage): Transaction | null {
     currency,
     merchant,
     cardLastDigits: parseCard(text),
-    transactionDate: parseDateSlashed(text) ?? raw.timestamp,
+    transactionDate: (() => {
+      const ymd = parseDateSlashed(text);
+      return ymd ? mergeDateAndTime(ymd, raw.timestamp) : raw.timestamp;
+    })(),
     messageTimestamp: raw.timestamp,
     rawMessage: text,
     failureReason,

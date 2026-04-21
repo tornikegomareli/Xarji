@@ -58,6 +58,11 @@ describe("TBC parser — full loan repayment (Sesxis daparva:)", () => {
     expect(tx.transactionDate.getMonth()).toBe(3);
     expect(tx.transactionDate.getDate()).toBe(20);
   });
+  test("preserves time-of-day from the SMS arrival timestamp", () => {
+    const arrived = new Date("2026-04-21T12:00:00Z");
+    expect(tx.transactionDate.getHours()).toBe(arrived.getHours());
+    expect(tx.transactionDate.getMinutes()).toBe(arrived.getMinutes());
+  });
 });
 
 describe("TBC parser — partial loan repayment (natsilobriv daifara)", () => {

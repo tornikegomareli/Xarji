@@ -57,6 +57,13 @@ describe("SOLO parser — card purchase (გადახდა:)", () => {
     expect(tx.transactionDate.getMonth()).toBe(11); // December
     expect(tx.transactionDate.getDate()).toBe(31);
   });
+  test("preserves time-of-day from the SMS arrival timestamp (date wins, time wins)", () => {
+    // mk() sets arrival to 2026-04-21T12:00:00Z. Even though the SMS body
+    // says 31.12.2025, the time component comes from the arrival.
+    const arrived = new Date("2026-04-21T12:00:00Z");
+    expect(tx.transactionDate.getHours()).toBe(arrived.getHours());
+    expect(tx.transactionDate.getMinutes()).toBe(arrived.getMinutes());
+  });
 
   test("handles USD amounts", () => {
     const usd = [
