@@ -71,16 +71,23 @@ export function useMonthStats(my: MonthYear) {
     const inRange = (date: number, iv: { start: Date; end: Date }) =>
       isWithinInterval(new Date(date), iv);
 
+    // Filter to GEL before summing: foreign-currency amounts (USD/EUR) can't
+    // be added to a GEL total without a conversion, and summing them raw
+    // would inflate the number. `count` stays unfiltered so the "N transactions"
+    // hint still reflects everything that happened this month.
     const currentPayments = payments.filter((p) => inRange(p.transactionDate, interval));
     const currentFailed = failed.filter((p) => inRange(p.transactionDate, interval));
     const prevPayments = payments.filter((p) => inRange(p.transactionDate, prevInterval));
 
-    const total = currentPayments.reduce((s, p) => s + p.amount, 0);
+    const currentGelPayments = currentPayments.filter((p) => p.currency === "GEL");
+    const prevGelPayments = prevPayments.filter((p) => p.currency === "GEL");
+
+    const total = currentGelPayments.reduce((s, p) => s + p.amount, 0);
     const count = currentPayments.length;
     const failedCount = currentFailed.length;
     const avg = count > 0 ? total / count : 0;
 
-    const prevTotal = prevPayments.reduce((s, p) => s + p.amount, 0);
+    const prevTotal = prevGelPayments.reduce((s, p) => s + p.amount, 0);
     const prevCount = prevPayments.length;
     const totalChange = prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : 0;
     const countChange = prevCount > 0 ? ((count - prevCount) / prevCount) * 100 : 0;

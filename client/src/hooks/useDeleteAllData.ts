@@ -2,11 +2,13 @@ import { useState } from "react";
 import { db } from "../lib/instant";
 import { usePayments, useFailedPayments } from "./useTransactions";
 import { useCategories } from "./useCategories";
+import { useCredits } from "./useCredits";
 
 export function useDeleteAllData() {
   const { payments } = usePayments();
   const { failedPayments } = useFailedPayments();
   const { categories } = useCategories();
+  const { credits } = useCredits();
   const [isDeleting, setIsDeleting] = useState(false);
 
   const deleteAllData = async () => {
@@ -15,6 +17,7 @@ export function useDeleteAllData() {
       const operations = [
         ...payments.map((p) => db.tx.payments[p.id].delete()),
         ...failedPayments.map((f) => db.tx.failedPayments[f.id].delete()),
+        ...credits.map((c) => db.tx.credits[c.id].delete()),
         ...categories.map((c) => db.tx.categories[c.id].delete()),
       ];
 
@@ -26,7 +29,8 @@ export function useDeleteAllData() {
     }
   };
 
-  const totalCount = payments.length + failedPayments.length + categories.length;
+  const totalCount =
+    payments.length + failedPayments.length + credits.length + categories.length;
 
   return { deleteAllData, isDeleting, totalCount };
 }

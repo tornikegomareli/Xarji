@@ -1,190 +1,251 @@
-import { Card, CardHeader, CardTitle, CardContent, Select } from "../components/ui";
-import { SpendingChart, CategoryPieChart, MerchantBarChart } from "../components/charts";
-import {
-  useAvailableMonths,
-  useMonthStats,
-  useMonthSpendingByDay,
-  useMonthTopMerchants,
-  useMonthCategoryAnalytics,
-} from "../hooks/useMonthlyAnalytics";
-import { formatCurrency } from "../lib/utils";
-import { useState, useMemo } from "react";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { useTheme } from "../ink/theme";
+import { Card, CardTitle, Pill, PageHeader } from "../ink/primitives";
+import { useSignals } from "../hooks/useSignals";
+import { getCategory } from "../lib/utils";
+
+function SignalCard({
+  icon,
+  title,
+  count,
+  level,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: React.ReactNode;
+  count: React.ReactNode;
+  level: "high" | "mid" | "low";
+  children: React.ReactNode;
+}) {
+  const T = useTheme();
+  const color = level === "high" ? T.accent : level === "mid" ? T.amber : T.blue;
+  const bg = level === "high" ? T.accentSoft : level === "mid" ? "rgba(241,184,74,0.12)" : "rgba(106,163,255,0.12)";
+  return (
+    <Card pad="22px 24px" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: bg,
+              color,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 16,
+              fontFamily: T.sans,
+              fontWeight: 700,
+            }}
+          >
+            {icon}
+          </div>
+          <div>
+            <CardTitle size={14}>{title}</CardTitle>
+            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>{count}</div>
+          </div>
+        </div>
+        <Pill bg={bg} color={color}>{level}</Pill>
+      </div>
+      <div>{children}</div>
+    </Card>
+  );
+}
 
 export function Analytics() {
-  const availableMonths = useAvailableMonths();
-
-  // Default to current month
-  const defaultMonth = useMemo(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth()).padStart(2, "0")}`;
-  }, []);
-
-  const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
-
-  const monthYear = useMemo(() => {
-    const [year, month] = selectedMonth.split("-").map(Number);
-    return { month, year };
-  }, [selectedMonth]);
-
-  const stats = useMonthStats(monthYear);
-  const spendingByDay = useMonthSpendingByDay(monthYear);
-  const topMerchants = useMonthTopMerchants(monthYear, 10);
-  const { withPercentages: categoryData, totalSpent } = useMonthCategoryAnalytics(monthYear);
-
-  const monthOptions = useMemo(() => {
-    const options = availableMonths.map((m) => ({ value: m.value, label: m.label }));
-    // Ensure current month is always an option
-    if (!options.find((o) => o.value === defaultMonth)) {
-      const now = new Date();
-      options.unshift({
-        value: defaultMonth,
-        label: now.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-      });
-    }
-    return options;
-  }, [availableMonths, defaultMonth]);
+  const T = useTheme();
+  const { monthFailed, repeatedDeclines, largeTx, newMerchants, cards, activeCount } = useSignals();
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Analytics</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Monthly insights into your spending patterns
-          </p>
-        </div>
-        <div className="w-48">
-          <Select
-            options={monthOptions}
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-          />
-        </div>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap, height: "100%" }}>
+      <PageHeader
+        eyebrow="Automatic anomaly detection · this month"
+        title="Signals"
+        ranges={null}
+        rightSlot={<Pill bg={T.accentSoft} color={T.accent}>{activeCount} active</Pill>}
+      />
 
-      {/* Previous Month Comparison Banner */}
-      {stats.prevTotal > 0 && (
-        <div
-          className={`flex items-center gap-3 p-4 rounded-lg border ${
-            stats.totalChange <= 0
-              ? "bg-green-50 border-green-200"
-              : "bg-red-50 border-red-200"
-          }`}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: T.density.gap }}>
+        <SignalCard
+          icon="⚠"
+          title="Repeated declines"
+          count={`${monthFailed.length} this month · ${repeatedDeclines.length} merchant${repeatedDeclines.length === 1 ? "" : "s"} 2+ times`}
+          level="high"
         >
-          {stats.totalChange <= 0 ? (
-            <TrendingDown className="w-5 h-5 text-green-600 flex-shrink-0" />
+          {monthFailed.length === 0 ? (
+            <div style={{ color: T.muted, fontSize: 12 }}>No declined payments this month.</div>
           ) : (
-            <TrendingUp className="w-5 h-5 text-red-600 flex-shrink-0" />
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {monthFailed.slice(0, 4).map((f) => (
+                <div
+                  key={f.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "10px 12px",
+                    background: T.panelAlt,
+                    borderRadius: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 13,
+                      background: T.accentSoft,
+                      color: T.accent,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      fontFamily: T.sans,
+                    }}
+                  >
+                    {(f.merchant || "?").charAt(0)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
+                      {f.merchant || "Unknown"}
+                    </div>
+                    <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>
+                      {f.failureReason || "—"} · ·{f.cardLastDigits || "—"} ·{" "}
+                      {new Date(f.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </div>
+                  </div>
+                  <Pill>{f.bankSenderId}</Pill>
+                </div>
+              ))}
+            </div>
           )}
-          <p
-            className={`text-sm ${
-              stats.totalChange <= 0 ? "text-green-700" : "text-red-700"
-            }`}
-          >
-            {stats.totalChange <= 0 ? "Down" : "Up"}{" "}
-            <strong>{Math.abs(stats.totalChange).toFixed(1)}%</strong> compared to
-            previous month ({formatCurrency(stats.prevTotal)}).
-            {stats.countChange !== 0 && (
-              <> Transaction count {stats.countChange > 0 ? "up" : "down"}{" "}
-              {Math.abs(stats.countChange).toFixed(1)}%.</>
-            )}
-          </p>
-        </div>
-      )}
+        </SignalCard>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <Card className="p-6">
-          <p className="text-sm text-slate-500">Total Spent</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">
-            {formatCurrency(totalSpent)}
-          </p>
-        </Card>
-        <Card className="p-6">
-          <p className="text-sm text-slate-500">Transactions</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">{stats.count}</p>
-        </Card>
-        <Card className="p-6">
-          <p className="text-sm text-slate-500">Failed</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">{stats.failedCount}</p>
-        </Card>
-        <Card className="p-6">
-          <p className="text-sm text-slate-500">Avg per Transaction</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">
-            {formatCurrency(stats.avg)}
-          </p>
-        </Card>
-      </div>
-
-      {/* Spending Over Time */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Daily Spending</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SpendingChart data={spendingByDay} height={350} />
-        </CardContent>
-      </Card>
-
-      {/* Category and Merchant Analysis */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* By Category */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Spending by Category</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {categoryData.length > 0 ? (
-              <>
-                <CategoryPieChart data={categoryData} height={300} showLegend={false} />
-                <div className="mt-4 space-y-2">
-                  {categoryData.map((cat) => (
-                    <div key={cat.name} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: cat.color }}
-                        />
-                        <span className="text-sm text-slate-700">{cat.name}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-sm font-medium text-slate-900">
-                          {formatCurrency(cat.total)}
-                        </span>
-                        <span className="text-xs text-slate-500 ml-2">
-                          ({cat.percentage.toFixed(1)}%)
-                        </span>
+        <SignalCard icon="⬆" title="Unusually large" count="Top transactions this month" level="mid">
+          {largeTx.length === 0 ? (
+            <div style={{ color: T.muted, fontSize: 12 }}>Nothing yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {largeTx.map((t) => {
+                const cat = getCategory(t.merchant, t.rawMessage);
+                return (
+                  <div
+                    key={t.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "8px 12px",
+                      background: T.panelAlt,
+                      borderRadius: 10,
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>{t.merchant || "—"}</div>
+                      <div style={{ fontSize: 10, color: T.dim, fontFamily: T.mono }}>
+                        {cat.name} · {new Date(t.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                       </div>
                     </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="flex items-center justify-center h-[300px] text-sm text-slate-500">
-                No data available
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: T.text, fontFamily: T.sans, fontVariantNumeric: "tabular-nums" }}>
+                      ₾{Math.round(t.amount)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </SignalCard>
 
-        {/* Top Merchants */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Top Merchants</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {topMerchants.length > 0 ? (
-              <MerchantBarChart data={topMerchants} height={400} />
-            ) : (
-              <div className="flex items-center justify-center h-[400px] text-sm text-slate-500">
-                No data available
+        <SignalCard
+          icon="✦"
+          title="New merchants"
+          count={`${newMerchants.length} first-time merchants this month`}
+          level="low"
+        >
+          {newMerchants.length === 0 ? (
+            <div style={{ color: T.muted, fontSize: 12 }}>No new merchants vs the previous 90 days.</div>
+          ) : (
+            <>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {newMerchants.slice(0, 8).map((n) => (
+                  <div
+                    key={n}
+                    style={{
+                      padding: "8px 12px",
+                      background: T.panelAlt,
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: T.text,
+                      fontFamily: T.sans,
+                    }}
+                  >
+                    {n}
+                  </div>
+                ))}
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 10, fontFamily: T.sans }}>
+                These merchants haven't appeared in the previous 90 days.
+              </div>
+            </>
+          )}
+        </SignalCard>
+
+        <SignalCard
+          icon="⟳"
+          title="Card usage"
+          count={`${cards.length} card${cards.length === 1 ? "" : "s"} used this month`}
+          level="low"
+        >
+          {cards.length === 0 ? (
+            <div style={{ color: T.muted, fontSize: 12 }}>No cards detected.</div>
+          ) : (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {cards.slice(0, 4).map((c, i) => (
+                <div
+                  key={c.card}
+                  style={{
+                    flex: "1 1 120px",
+                    padding: "10px 12px",
+                    background: T.panelAlt,
+                    borderRadius: 10,
+                    border: i === cards.length - 1 && cards.length > 1 ? `1px solid ${T.accent}55` : `1px solid ${T.line}`,
+                  }}
+                >
+                  <div style={{ fontSize: 10, color: T.dim, fontFamily: T.mono, letterSpacing: 0.4 }}>··{c.card}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginTop: 6, fontFamily: T.sans }}>
+                    ₾{Math.round(c.total)}
+                  </div>
+                  <div style={{ fontSize: 10, color: T.muted, marginTop: 2, fontFamily: T.sans }}>{c.count} tx</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </SignalCard>
       </div>
+
+      <Card pad="18px 22px" style={{ display: "flex", gap: 14, alignItems: "center" }}>
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            background: T.panelAlt,
+            color: T.muted,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: T.sans,
+            fontSize: 14,
+          }}
+        >
+          ⓘ
+        </div>
+        <div style={{ fontSize: 12, color: T.muted, fontFamily: T.sans, lineHeight: 1.5 }}>
+          Signals are computed from the current month's transactions and the previous 90 days. They update automatically as new SMS are
+          parsed.
+        </div>
+      </Card>
     </div>
   );
 }

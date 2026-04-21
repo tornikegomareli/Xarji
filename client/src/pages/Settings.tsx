@@ -1,302 +1,363 @@
-import { Card, CardHeader, CardTitle, CardContent, CardDescription, Button, Input, Modal } from "../components/ui";
-import { usePayments, useFailedPayments } from "../hooks/useTransactions";
-import { useCategories } from "../hooks/useCategories";
-import { useDeleteAllData } from "../hooks/useDeleteAllData";
+import { useMemo, useState } from "react";
+import { useTheme, useTweaks } from "../ink/theme";
+import { Card, CardTitle, LiveDot, PageHeader, Row, Toggle } from "../ink/primitives";
 import { useBankSenders } from "../hooks/useBankSenders";
-import { Database, Download, Info, Trash2, AlertTriangle, Plus, ToggleLeft, ToggleRight, X } from "lucide-react";
-import { useState } from "react";
+import { useDeleteAllData } from "../hooks/useDeleteAllData";
+import { usePayments, useFailedPayments } from "../hooks/useTransactions";
 
 export function Settings() {
+  const T = useTheme();
+  const { tweaks, setTweaks } = useTweaks();
+  const { senders, toggleSender, addSender } = useBankSenders();
+  const { deleteAllData, isDeleting, totalCount } = useDeleteAllData();
   const { payments } = usePayments();
   const { failedPayments } = useFailedPayments();
-  const { categories } = useCategories();
 
-  const [isExporting, setIsExporting] = useState(false);
-
-  // Delete all data
-  const { deleteAllData, isDeleting, totalCount } = useDeleteAllData();
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
-
-  // Bank senders
-  const { senders, addSender, toggleSender, deleteSender } = useBankSenders();
-  const [showAddSender, setShowAddSender] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const [newSenderId, setNewSenderId] = useState("");
-  const [newDisplayName, setNewDisplayName] = useState("");
+  const [newSenderName, setNewSenderName] = useState("");
 
-  const handleExport = async () => {
-    setIsExporting(true);
-    try {
-      const data = {
-        exportedAt: new Date().toISOString(),
-        payments: payments,
-        failedPayments: failedPayments,
-        categories: categories,
-      };
-
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `expense-tracker-export-${new Date().toISOString().split("T")[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Export failed:", error);
-    } finally {
-      setIsExporting(false);
+  const senderCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const p of [...payments, ...failedPayments]) {
+      m[p.bankSenderId] = (m[p.bankSenderId] || 0) + 1;
     }
-  };
-
-  const handleDeleteAll = async () => {
-    await deleteAllData();
-    setShowDeleteModal(false);
-    setDeleteConfirmText("");
-  };
+    return m;
+  }, [payments, failedPayments]);
 
   const handleAddSender = async () => {
-    if (!newSenderId.trim() || !newDisplayName.trim()) return;
-    await addSender(newSenderId.trim(), newDisplayName.trim());
+    if (!newSenderId.trim()) return;
+    await addSender(newSenderId.trim().toUpperCase(), newSenderName.trim() || newSenderId.trim());
     setNewSenderId("");
-    setNewDisplayName("");
-    setShowAddSender(false);
+    setNewSenderName("");
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Manage your application settings and data
-        </p>
+  const handleExport = () => {
+    const payload = { exportedAt: Date.now(), payments, failedPayments };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `xarji-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDelete = async () => {
+    await deleteAllData();
+    setConfirm(false);
+  };
+
+  const Section = ({
+    title,
+    subtitle,
+    children,
+  }: {
+    title: React.ReactNode;
+    subtitle?: React.ReactNode;
+    children: React.ReactNode;
+  }) => (
+    <Card pad="24px 26px">
+      <div style={{ marginBottom: 16 }}>
+        <CardTitle>{title}</CardTitle>
+        {subtitle && (
+          <div style={{ fontSize: 12, color: T.muted, marginTop: 4, fontFamily: T.sans, lineHeight: 1.5 }}>{subtitle}</div>
+        )}
       </div>
+      {children}
+    </Card>
+  );
 
-      {/* Data Overview */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="w-5 h-5" />
-            Data Overview
-          </CardTitle>
-          <CardDescription>
-            Summary of your synced data from InstantDB
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 bg-slate-50 rounded-lg">
-              <p className="text-sm text-slate-500">Successful Payments</p>
-              <p className="text-2xl font-bold text-slate-900">{payments.length}</p>
-            </div>
-            <div className="p-4 bg-slate-50 rounded-lg">
-              <p className="text-sm text-slate-500">Failed Payments</p>
-              <p className="text-2xl font-bold text-slate-900">{failedPayments.length}</p>
-            </div>
-            <div className="p-4 bg-slate-50 rounded-lg">
-              <p className="text-sm text-slate-500">Categories</p>
-              <p className="text-2xl font-bold text-slate-900">{categories.length}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap, height: "100%", overflowY: "auto" }}>
+      <PageHeader eyebrow="Settings · preferences · data" title="Manage" ranges={null} />
 
-      {/* Export Data */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Download className="w-5 h-5" />
-            Export Data
-          </CardTitle>
-          <CardDescription>
-            Download all your transaction data as JSON
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button onClick={handleExport} loading={isExporting} variant="outline">
-            <Download className="w-4 h-4 mr-2" />
-            Export All Data
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Bank Sender Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="w-5 h-5" />
-            Bank Sender Configuration
-          </CardTitle>
-          <CardDescription>
-            Manage bank SMS sender IDs used to parse transactions
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-700">
-              These sender IDs should match your backend config at{" "}
-              <code className="text-xs bg-blue-100 px-1 py-0.5 rounded">~/.xarji/config.json</code>.
-              Changes here are stored in InstantDB for reference.
-            </p>
-          </div>
-
-          {senders.length > 0 ? (
-            <div className="divide-y divide-slate-100">
-              {senders.map((sender) => (
-                <div key={sender.id} className="flex items-center justify-between py-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">{sender.displayName}</p>
-                    <p className="text-xs text-slate-500">{sender.senderId}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: T.density.gap }}>
+        <Section
+          title="Bank senders"
+          subtitle="Xarji reads SMS from these senders. Disable one to stop parsing its messages (existing data is kept)."
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {senders.length === 0 && (
+              <div style={{ color: T.muted, fontSize: 12, fontFamily: T.sans, padding: "8px 0" }}>
+                No senders configured yet.
+              </div>
+            )}
+            {senders.map((b) => {
+              const count = senderCounts[b.senderId] || 0;
+              return (
+                <div
+                  key={b.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    padding: "14px 16px",
+                    background: T.panelAlt,
+                    borderRadius: T.rMd,
+                    border: `1px solid ${T.line}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: T.accent,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      color: "#fff",
+                      fontFamily: T.sans,
+                    }}
+                  >
+                    {b.senderId.charAt(0)}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => toggleSender(sender.id, !sender.enabled)}
-                      className="p-1 rounded hover:bg-slate-100 transition-colors"
-                      title={sender.enabled ? "Disable" : "Enable"}
-                    >
-                      {sender.enabled ? (
-                        <ToggleRight className="w-6 h-6 text-green-600" />
-                      ) : (
-                        <ToggleLeft className="w-6 h-6 text-slate-400" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => deleteSender(sender.id)}
-                      className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
+                      {b.senderId} · {b.displayName}
+                    </div>
+                    <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+                      {count.toLocaleString("en-US")} transactions parsed
+                    </div>
                   </div>
+                  <Toggle active={b.enabled} onChange={() => toggleSender(b.id, !b.enabled)} />
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">No bank senders configured yet.</p>
-          )}
-
-          {showAddSender ? (
-            <div className="space-y-3 p-4 bg-slate-50 rounded-lg">
-              <Input
-                label="Sender ID"
-                placeholder="e.g. AD-HDFCBK"
-                value={newSenderId}
-                onChange={(e) => setNewSenderId(e.target.value)}
-              />
-              <Input
-                label="Display Name"
-                placeholder="e.g. HDFC Bank"
-                value={newDisplayName}
-                onChange={(e) => setNewDisplayName(e.target.value)}
-              />
-              <div className="flex gap-2">
-                <Button size="sm" onClick={handleAddSender}>
-                  Add Sender
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setShowAddSender(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <Button size="sm" variant="outline" onClick={() => setShowAddSender(true)}>
-              <Plus className="w-4 h-4 mr-1" />
-              Add Sender
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* About */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Info className="w-5 h-5" />
-            About
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <h4 className="text-sm font-medium text-slate-900">SMS Expense Tracker</h4>
-            <p className="text-sm text-slate-500 mt-1">
-              A personal expense tracking application that reads bank SMS messages
-              from your macOS Messages app and syncs them to InstantDB.
-            </p>
+              );
+            })}
           </div>
-          <div className="text-sm text-slate-500 space-y-1">
-            <p><strong>Backend Service:</strong> Bun + TypeScript</p>
-            <p><strong>Database:</strong> InstantDB (real-time sync)</p>
-            <p><strong>Client:</strong> React + Vite + Tailwind CSS</p>
-          </div>
-          <div className="pt-4 border-t border-slate-100">
-            <p className="text-xs text-slate-400">
-              Data is synced in real-time via InstantDB.
-              Your bank SMS messages are parsed locally on your Mac.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Danger Zone */}
-      <Card className="border-red-200">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-red-600">
-            <AlertTriangle className="w-5 h-5" />
-            Danger Zone
-          </CardTitle>
-          <CardDescription>
-            Irreversible actions that permanently delete your data
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="p-4 border border-red-200 rounded-lg bg-red-50">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h4 className="text-sm font-medium text-red-900">Delete All Data</h4>
-                <p className="text-sm text-red-700 mt-1">
-                  Permanently remove all {totalCount} records (payments, failed payments, and categories).
-                  This action cannot be undone.
-                </p>
-              </div>
-              <Button variant="danger" onClick={() => setShowDeleteModal(true)}>
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete All
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Delete Confirmation Modal */}
-      <Modal open={showDeleteModal} onClose={() => { setShowDeleteModal(false); setDeleteConfirmText(""); }} title="Delete All Data" size="sm">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600">
-            This will permanently delete <strong>{totalCount}</strong> records including all payments,
-            failed payments, and categories. This action cannot be undone.
-          </p>
-          <Input
-            label='Type "DELETE" to confirm'
-            placeholder="DELETE"
-            value={deleteConfirmText}
-            onChange={(e) => setDeleteConfirmText(e.target.value)}
-          />
-          <div className="flex gap-2 justify-end">
-            <Button variant="ghost" onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(""); }}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              disabled={deleteConfirmText !== "DELETE"}
-              loading={isDeleting}
-              onClick={handleDeleteAll}
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <input
+              value={newSenderId}
+              onChange={(e) => setNewSenderId(e.target.value)}
+              placeholder="Sender ID (e.g. SOLO)"
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                background: T.panelAlt,
+                border: `1px solid ${T.line}`,
+                color: T.text,
+                borderRadius: 10,
+                fontSize: 12,
+                fontFamily: T.sans,
+                outline: "none",
+              }}
+            />
+            <input
+              value={newSenderName}
+              onChange={(e) => setNewSenderName(e.target.value)}
+              placeholder="Display name"
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                background: T.panelAlt,
+                border: `1px solid ${T.line}`,
+                color: T.text,
+                borderRadius: 10,
+                fontSize: 12,
+                fontFamily: T.sans,
+                outline: "none",
+              }}
+            />
+            <button
+              onClick={handleAddSender}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 10,
+                border: "none",
+                background: T.accent,
+                color: "#fff",
+                fontSize: 12.5,
+                fontWeight: 700,
+                fontFamily: T.sans,
+                cursor: "pointer",
+              }}
             >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete Everything
-            </Button>
+              Add
+            </button>
           </div>
-        </div>
-      </Modal>
+        </Section>
+
+        <Section title="Appearance" subtitle="Visual preferences. Use the Tweaks panel (bottom-right) for quick live changes.">
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <Row label="Theme mode" hint="Dark or light canvas">
+              <div style={{ display: "flex", gap: 6 }}>
+                {(["dark", "light"] as const).map((v) => {
+                  const active = tweaks.mode === v;
+                  return (
+                    <button
+                      key={v}
+                      onClick={() => setTweaks({ ...tweaks, mode: v })}
+                      style={{
+                        padding: "8px 14px",
+                        borderRadius: 10,
+                        background: active ? T.accentSoft : T.panelAlt,
+                        color: active ? T.accent : T.muted,
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        fontFamily: T.sans,
+                        cursor: "pointer",
+                        border: `1px solid ${active ? T.accent + "33" : T.line}`,
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      {v}
+                    </button>
+                  );
+                })}
+              </div>
+            </Row>
+            <Row label="Density" hint="Affects row padding and gap">
+              <div style={{ display: "flex", gap: 6 }}>
+                {(["spacious", "balanced", "dense"] as const).map((v) => {
+                  const active = tweaks.density === v;
+                  return (
+                    <button
+                      key={v}
+                      onClick={() => setTweaks({ ...tweaks, density: v })}
+                      style={{
+                        padding: "8px 14px",
+                        borderRadius: 10,
+                        background: active ? T.accentSoft : T.panelAlt,
+                        color: active ? T.accent : T.muted,
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        fontFamily: T.sans,
+                        cursor: "pointer",
+                        border: `1px solid ${active ? T.accent + "33" : T.line}`,
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      {v}
+                    </button>
+                  );
+                })}
+              </div>
+            </Row>
+            <Row label="Charts" hint="Show or hide trend/donut visuals">
+              <Toggle active={tweaks.chartsVisible} onChange={() => setTweaks({ ...tweaks, chartsVisible: !tweaks.chartsVisible })} />
+            </Row>
+          </div>
+        </Section>
+
+        <Section title="Data sources" subtitle="macOS Messages.app is the source of truth. Xarji reads the SQLite store read-only.">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {[
+              { k: "Messages.app", v: "~/Library/Messages/chat.db", hint: "service reads on macOS", ok: true },
+              { k: "InstantDB", v: "connected · live", hint: `${payments.length + failedPayments.length} rows`, ok: true },
+              { k: "Local backup", v: "~/.xarji/transactions.json", hint: "written by the service", ok: true },
+              { k: "Parser", v: "bun service", hint: "see service logs for details", ok: true },
+            ].map((d) => (
+              <div key={d.k} style={{ padding: 14, background: T.panelAlt, borderRadius: T.rMd, border: `1px solid ${T.line}` }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: T.text, fontFamily: T.sans }}>{d.k}</span>
+                  <LiveDot color={d.ok ? T.green : T.accent} />
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: T.muted,
+                    marginTop: 6,
+                    fontFamily: T.mono,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {d.v}
+                </div>
+                <div style={{ fontSize: 10, color: T.dim, marginTop: 4, fontFamily: T.sans }}>{d.hint}</div>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        <Section title="Danger zone" subtitle="Delete parsed transactions, or export. Messages.app data is never modified.">
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <Row label="Export data" hint="Download a JSON backup of all transactions">
+              <button
+                onClick={handleExport}
+                style={{
+                  padding: "9px 16px",
+                  borderRadius: 10,
+                  border: `1px solid ${T.line}`,
+                  background: T.panelAlt,
+                  color: T.text,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  fontFamily: T.sans,
+                  cursor: "pointer",
+                }}
+              >
+                Download .json
+              </button>
+            </Row>
+            <Row
+              label="Delete all transactions"
+              hint={`Removes ${totalCount.toLocaleString("en-US")} records · SMS remain in Messages.app`}
+            >
+              {confirm ? (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    onClick={() => setConfirm(false)}
+                    disabled={isDeleting}
+                    style={{
+                      padding: "9px 14px",
+                      borderRadius: 10,
+                      border: `1px solid ${T.line}`,
+                      background: "transparent",
+                      color: T.muted,
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      fontFamily: T.sans,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                    style={{
+                      padding: "9px 14px",
+                      borderRadius: 10,
+                      border: "none",
+                      background: T.accent,
+                      color: "#fff",
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      fontFamily: T.sans,
+                      cursor: isDeleting ? "progress" : "pointer",
+                      opacity: isDeleting ? 0.7 : 1,
+                    }}
+                  >
+                    {isDeleting ? "Deleting…" : "Confirm delete"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirm(true)}
+                  style={{
+                    padding: "9px 16px",
+                    borderRadius: 10,
+                    border: `1px solid ${T.accent}55`,
+                    background: T.accentSoft,
+                    color: T.accent,
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    fontFamily: T.sans,
+                    cursor: "pointer",
+                  }}
+                >
+                  Delete…
+                </button>
+              )}
+            </Row>
+          </div>
+        </Section>
+      </div>
     </div>
   );
 }

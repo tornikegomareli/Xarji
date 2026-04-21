@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Layout } from "./components/Layout";
-import { Dashboard, Transactions, Analytics, Categories, Settings } from "./pages";
+import { Dashboard, Transactions, Categories, Merchants, Income, Signals, Settings } from "./pages";
 
 function App() {
   return (
@@ -9,9 +9,11 @@ function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="transactions" element={<Transactions />} />
-          <Route path="analytics" element={<Analytics />} />
+          <Route path="income" element={<Income />} />
           <Route path="categories" element={<Categories />} />
-          <Route path="settings" element={<Settings />} />
+          <Route path="merchants" element={<Merchants />} />
+          <Route path="signals" element={<Signals />} />
+          <Route path="manage" element={<Settings />} />
         </Route>
       </Routes>
     </BrowserRouter>

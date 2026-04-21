@@ -1,13 +1,11 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { format, formatDistanceToNow, isToday, isYesterday, isThisWeek, isThisMonth } from "date-fns";
+import { format, isToday, isYesterday, isThisWeek, isThisMonth } from "date-fns";
 
-// Merge Tailwind classes
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// Format currency
 export function formatCurrency(amount: number, currency: string = "GEL"): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -16,68 +14,23 @@ export function formatCurrency(amount: number, currency: string = "GEL"): string
   }).format(amount);
 }
 
-// Format date for display
 export function formatDate(timestamp: number): string {
-  const date = new Date(timestamp);
-  return format(date, "MMM d, yyyy");
+  return format(new Date(timestamp), "MMM d, yyyy");
 }
 
-// Format date with time
 export function formatDateTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  return format(date, "MMM d, yyyy 'at' HH:mm");
+  return format(new Date(timestamp), "MMM d, yyyy 'at' HH:mm");
 }
 
-// Format relative date
-export function formatRelativeDate(timestamp: number): string {
-  const date = new Date(timestamp);
-
-  if (isToday(date)) {
-    return "Today";
-  }
-  if (isYesterday(date)) {
-    return "Yesterday";
-  }
-  if (isThisWeek(date)) {
-    return format(date, "EEEE");
-  }
-  if (isThisMonth(date)) {
-    return format(date, "MMM d");
-  }
-  return format(date, "MMM d, yyyy");
-}
-
-// Get date group for transactions
 export function getDateGroup(timestamp: number): string {
   const date = new Date(timestamp);
-
-  if (isToday(date)) {
-    return "Today";
-  }
-  if (isYesterday(date)) {
-    return "Yesterday";
-  }
-  if (isThisWeek(date)) {
-    return "This Week";
-  }
-  if (isThisMonth(date)) {
-    return "This Month";
-  }
+  if (isToday(date)) return "Today";
+  if (isYesterday(date)) return "Yesterday";
+  if (isThisWeek(date)) return "This Week";
+  if (isThisMonth(date)) return "This Month";
   return format(date, "MMMM yyyy");
 }
 
-// Format time ago
-export function formatTimeAgo(timestamp: number): string {
-  return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
-}
-
-// Calculate percentage change
-export function percentageChange(current: number, previous: number): number {
-  if (previous === 0) return current > 0 ? 100 : 0;
-  return ((current - previous) / previous) * 100;
-}
-
-// Group array by key
 export function groupBy<T>(array: T[], key: (item: T) => string): Record<string, T[]> {
   return array.reduce((groups, item) => {
     const group = key(item);
@@ -87,41 +40,61 @@ export function groupBy<T>(array: T[], key: (item: T) => string): Record<string,
   }, {} as Record<string, T[]>);
 }
 
-// Default categories
-export const DEFAULT_CATEGORIES = [
-  { name: "Food & Dining", color: "#ef4444", icon: "utensils" },
-  { name: "Transport", color: "#3b82f6", icon: "car" },
-  { name: "Shopping", color: "#8b5cf6", icon: "shopping-bag" },
-  { name: "Entertainment", color: "#ec4899", icon: "film" },
-  { name: "Subscriptions", color: "#06b6d4", icon: "repeat" },
-  { name: "Utilities", color: "#84cc16", icon: "zap" },
-  { name: "Healthcare", color: "#14b8a6", icon: "heart" },
-  { name: "Other", color: "#6b7280", icon: "more-horizontal" },
+export interface InkCategory {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+}
+
+export const DEFAULT_CATEGORIES: InkCategory[] = [
+  { id: "groceries",   name: "Groceries",     color: "#d4a574", icon: "◐" },
+  { id: "dining",      name: "Dining",        color: "#c4502e", icon: "◑" },
+  { id: "food",        name: "Delivery",      color: "#e8a05a", icon: "◒" },
+  { id: "transport",   name: "Transport",     color: "#6b8e7f", icon: "◓" },
+  { id: "subs",        name: "Subscriptions", color: "#8b7cb8", icon: "◔" },
+  { id: "shopping",    name: "Shopping",      color: "#5b7ca8", icon: "◕" },
+  { id: "travel",      name: "Travel",        color: "#a87c5b", icon: "○" },
+  { id: "utilities",   name: "Utilities",     color: "#7a7a7a", icon: "●" },
+  { id: "health",      name: "Health",        color: "#5ba87c", icon: "◉" },
+  { id: "fun",         name: "Entertainment", color: "#b85ba8", icon: "◎" },
+  { id: "loans",       name: "Loans",         color: "#a85ba8", icon: "◈" },
+  { id: "cash",        name: "Cash",          color: "#9a9a9a", icon: "◌" },
+  { id: "other",       name: "Other",         color: "#6b7280", icon: "·" },
 ];
 
-// Merchant category patterns
-export const MERCHANT_PATTERNS: Record<string, string> = {
-  "bolt": "Transport",
-  "uber": "Transport",
-  "glovo": "Food & Dining",
-  "wolt": "Food & Dining",
-  "spotify": "Subscriptions",
-  "netflix": "Subscriptions",
-  "google": "Subscriptions",
-  "apple": "Subscriptions",
-};
+const MERCHANT_TO_CATEGORY: Array<[RegExp, string]> = [
+  // Check Loans and Cash (ATM) first — they come from the parser with stable,
+  // curated merchant strings, so match on the exact phrase.
+  [/^loan repayment$/i, "loans"],
+  [/^atm$/i, "cash"],
+  [/\b(wolt|glovo|bolt\s*food)\b/i, "food"],
+  [/\b(carrefour|goodwill|metro|spar|nikora|მეტრო|ნიკორა)\b/i, "groceries"],
+  [/\b(bolt|yandex|uber|taxi)\b/i, "transport"],
+  [/\b(socar|gulf|petrol|fuel|tegeta\s*motor)\b/i, "transport"],
+  [/\b(spotify|netflix|claude|anthropic|github|icloud|apple\.com|figma|openai|chatgpt)\b/i, "subs"],
+  [/\b(silk\s*pharmacy|psp\s*pharmacy|pharmacy|fitness|gym)\b/i, "health"],
+  [/\b(h&m|zara|ikea|elit|electronics|shopping|galleria)\b/i, "shopping"],
+  [/\b(booking|wizz|airbnb|hotel|airline|air|flight)\b/i, "travel"],
+  [/\b(magti|tegeta\s*energy|silknet|internet|bill)\b/i, "utilities"],
+  [/\b(cinema|kino|theater|concert)\b/i, "fun"],
+  [/\b(atm|cash)\b/i, "cash"],
+  [/\b(lolita|shavi\s*lomi|stamba|cafe|café|restaurant|entrée|litera|ქაფე)\b/i, "dining"],
+];
 
-// Auto-categorize based on merchant name
-export function autoCategorize(merchant: string | null | undefined): string {
-  if (!merchant) return "Other";
-
-  const lowerMerchant = merchant.toLowerCase();
-
-  for (const [pattern, category] of Object.entries(MERCHANT_PATTERNS)) {
-    if (lowerMerchant.includes(pattern)) {
-      return category;
-    }
+export function categorizeId(merchant: string | null | undefined, raw?: string | null): string {
+  const hay = `${merchant ?? ""} ${raw ?? ""}`;
+  for (const [re, id] of MERCHANT_TO_CATEGORY) {
+    if (re.test(hay)) return id;
   }
+  return "other";
+}
 
-  return "Other";
+export function getCategory(merchant: string | null | undefined, raw?: string | null): InkCategory {
+  const id = categorizeId(merchant, raw);
+  return DEFAULT_CATEGORIES.find((c) => c.id === id) || DEFAULT_CATEGORIES[DEFAULT_CATEGORIES.length - 1];
+}
+
+export function autoCategorize(merchant: string | null | undefined): string {
+  return getCategory(merchant).name;
 }

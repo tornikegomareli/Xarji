@@ -2,39 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #213547;
-  background-color: #f8fafc;
-}
-
-body {
+html, body {
   margin: 0;
-  min-width: 320px;
+  padding: 0;
+  background: #0c0c0e;
+  font-family: 'Inter Tight', system-ui, sans-serif;
   min-height: 100vh;
+  color: #f2f2f4;
 }
 
-#root {
-  min-height: 100vh;
+*:lang(ka), *:has(> :lang(ka)) {
+  font-family: 'Noto Sans Georgian', 'Inter Tight', system-ui, sans-serif;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
+#root { min-height: 100vh; }
 
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
+button { font: inherit; }
 
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(242,242,244,0.1); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(242,242,244,0.2); }

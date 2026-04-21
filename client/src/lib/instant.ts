@@ -44,6 +44,19 @@ const schema = i.schema({
       enabled: i.boolean(),
       createdAt: i.number(),
     }),
+    credits: i.entity({
+      transactionId: i.string().unique(),
+      transactionType: i.string(),
+      amount: i.number().indexed(),
+      currency: i.string().indexed(),
+      counterparty: i.string().optional().indexed(),
+      cardLastDigits: i.string().optional(),
+      transactionDate: i.number().indexed(),
+      messageTimestamp: i.number(),
+      syncedAt: i.number(),
+      bankSenderId: i.string().indexed(),
+      rawMessage: i.string(),
+    }),
   },
   links: {},
 });
@@ -101,4 +114,19 @@ export type BankSender = {
   displayName: string;
   enabled: boolean;
   createdAt: number;
+};
+
+export type Credit = {
+  id: string;
+  transactionId: string;
+  transactionType: string;
+  amount: number;
+  currency: string;
+  counterparty?: string;
+  cardLastDigits?: string;
+  transactionDate: number;
+  messageTimestamp: number;
+  syncedAt: number;
+  bankSenderId: string;
+  rawMessage: string;
 };
