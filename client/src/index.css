@@ -11,7 +11,13 @@ html, body {
   color: #f2f2f4;
 }
 
-*:lang(ka), *:has(> :lang(ka)) {
+/* Georgian glyphs fall back to Noto Sans Georgian. Tag text with
+   `lang="ka"` at the element level where it's needed (we do this on
+   the sidebar logo subtitle). The previous rule also matched ancestors
+   via `*:has(> :lang(ka))` but anchoring :has() to the universal
+   selector forces the engine to re-evaluate on every DOM mutation,
+   which is what MDN specifically warns against. */
+:lang(ka) {
   font-family: 'Noto Sans Georgian', 'Inter Tight', system-ui, sans-serif;
 }
 
