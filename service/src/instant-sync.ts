@@ -255,13 +255,14 @@ export async function queryPayments(options?: {
     if (options?.currency) whereClause.currency = options.currency;
     if (options?.merchant) whereClause.merchant = options.merchant;
 
+    // `where` in the admin SDK's query types is currently `undefined`-only,
+    // so build the $ object dynamically to avoid a type clash while still
+    // sending the filter when caller supplied one.
+    const $: Record<string, unknown> = { limit: options?.limit || 100 };
+    if (Object.keys(whereClause).length > 0) $.where = whereClause;
+
     const result = await db.query({
-      payments: {
-        $: {
-          where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
-          limit: options?.limit || 100,
-        },
-      },
+      payments: { $ } as any,
     });
 
     return { payments: result.payments || [] };
