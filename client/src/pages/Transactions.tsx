@@ -5,7 +5,7 @@ import { TxRow, type InkTx } from "../ink/TxRow";
 import { usePayments, useFailedPayments } from "../hooks/useTransactions";
 import { useBankSenders } from "../hooks/useBankSenders";
 import { DEFAULT_CATEGORIES, getCategory, categorizeId } from "../lib/utils";
-import { currencySymbol } from "../ink/format";
+import { currencySymbol, formatLocalDay, parseLocalDay } from "../ink/format";
 
 type TxKind = "all" | "payment" | "failed";
 
@@ -72,8 +72,7 @@ export function Transactions() {
   const groups = useMemo(() => {
     const g: Record<string, InkTx[]> = {};
     for (const t of filtered.slice(0, 200)) {
-      const d = new Date(t.transactionDate);
-      const key = d.toISOString().slice(0, 10);
+      const key = formatLocalDay(t.transactionDate);
       if (!g[key]) g[key] = [];
       g[key].push(t);
     }
@@ -237,7 +236,7 @@ export function Transactions() {
             ) : (
               dayKeys.map((key) => {
                 const items = groups[key];
-                const d = new Date(key);
+                const d = parseLocalDay(key);
                 const total = items
                   .filter((t) => t.kind === "payment" && t.currency === "GEL" && t.amount !== null)
                   .reduce((s, t) => s + (t.amount || 0), 0);

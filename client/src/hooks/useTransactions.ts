@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { db } from "../lib/instant";
 import { groupBy, getDateGroup } from "../lib/utils";
+import { formatLocalDay } from "../ink/format";
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval } from "date-fns";
 
 export function usePayments() {
@@ -145,16 +146,14 @@ export function useSpendingByDay(days: number = 30) {
     const dailyTotals: Record<string, number> = {};
 
     for (const payment of recentPayments) {
-      const date = new Date(payment.transactionDate).toISOString().split("T")[0];
+      const date = formatLocalDay(payment.transactionDate);
       dailyTotals[date] = (dailyTotals[date] || 0) + payment.amount;
     }
 
     // Fill in missing days with 0
     const result: { date: string; amount: number }[] = [];
     for (let i = days - 1; i >= 0; i--) {
-      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split("T")[0];
+      const date = formatLocalDay(now.getTime() - i * 24 * 60 * 60 * 1000);
       result.push({
         date,
         amount: dailyTotals[date] || 0,

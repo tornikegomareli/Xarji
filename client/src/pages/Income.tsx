@@ -6,7 +6,7 @@ import { useCredits, useMonthCredits } from "../hooks/useCredits";
 import { useBankSenders } from "../hooks/useBankSenders";
 import { useMonthlyTrend } from "../hooks/useMonthlyTrend";
 import { AreaChart } from "../ink/charts";
-import { currencySymbol, monthKey } from "../ink/format";
+import { currencySymbol, monthKey, formatLocalDay, parseLocalDay } from "../ink/format";
 import { isWithinInterval, startOfMonth, endOfMonth, format } from "date-fns";
 
 export function Income() {
@@ -69,8 +69,7 @@ export function Income() {
   const groups = useMemo(() => {
     const g: Record<string, InkTx[]> = {};
     for (const t of filtered.slice(0, 300)) {
-      const d = new Date(t.transactionDate);
-      const key = d.toISOString().slice(0, 10);
+      const key = formatLocalDay(t.transactionDate);
       if (!g[key]) g[key] = [];
       g[key].push(t);
     }
@@ -300,7 +299,7 @@ export function Income() {
             ) : (
               dayKeys.map((key) => {
                 const items = groups[key];
-                const d = new Date(key);
+                const d = parseLocalDay(key);
                 const dayTotal = items
                   .filter((t) => t.currency === "GEL")
                   .reduce((s, t) => s + (t.amount || 0), 0);

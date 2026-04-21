@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { db } from "../lib/instant";
 import { DEFAULT_CATEGORIES, autoCategorize } from "../lib/utils";
+import { formatLocalDay } from "../ink/format";
 import {
   startOfMonth,
   endOfMonth,
@@ -118,14 +119,14 @@ export function useMonthSpendingByDay(my: MonthYear) {
 
     const dailyTotals: Record<string, number> = {};
     for (const p of monthPayments) {
-      const date = new Date(p.transactionDate).toISOString().split("T")[0];
+      const date = formatLocalDay(p.transactionDate);
       dailyTotals[date] = (dailyTotals[date] || 0) + p.amount;
     }
 
     const daysInMonth = getDaysInMonth(new Date(my.year, my.month, 1));
     const result: { date: string; amount: number }[] = [];
     for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(my.year, my.month, day).toISOString().split("T")[0];
+      const date = formatLocalDay(new Date(my.year, my.month, day).getTime());
       result.push({ date, amount: dailyTotals[date] || 0 });
     }
 
