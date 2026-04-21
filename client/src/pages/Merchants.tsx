@@ -15,12 +15,35 @@ export function Merchants() {
   const [search, setSearch] = useState("");
 
   const merchants = useMemo(() => {
-    const map: Record<string, { merchant: string; rawMerchant: string; total: number; count: number }> = {};
+    // One merchant name can have many raw SMS variants (different POS
+    // descriptors, different currencies, different cities). Store the
+    // first raw message for display, and a union of all raw messages as
+    // a lowercased `searchBlob` so a search query that only appears in a
+    // later variant still matches.
+    type MerchantAgg = {
+      merchant: string;
+      rawMerchant: string;
+      searchBlob: string;
+      total: number;
+      count: number;
+    };
+    const map: Record<string, MerchantAgg> = {};
     for (const p of payments) {
       if (p.currency !== "GEL") continue;
       if (!isWithinInterval(new Date(p.transactionDate), { start: monthStart, end: monthEnd })) continue;
       const key = p.merchant || "Unknown";
-      if (!map[key]) map[key] = { merchant: key, rawMerchant: p.rawMessage || "", total: 0, count: 0 };
+      const raw = p.rawMessage || "";
+      if (!map[key]) {
+        map[key] = {
+          merchant: key,
+          rawMerchant: raw,
+          searchBlob: `${key}\n${raw}`.toLowerCase(),
+          total: 0,
+          count: 0,
+        };
+      } else if (raw) {
+        map[key].searchBlob += `\n${raw.toLowerCase()}`;
+      }
       map[key].total += p.amount;
       map[key].count += 1;
     }
@@ -29,7 +52,7 @@ export function Merchants() {
 
   const total = merchants.reduce((s, m) => s + m.total, 0);
   const filtered = merchants.filter(
-    (m) => !search || m.merchant.toLowerCase().includes(search.toLowerCase()) || m.rawMerchant.toLowerCase().includes(search.toLowerCase())
+    (m) => !search || m.searchBlob.includes(search.toLowerCase())
   );
 
   const cols = vp.narrow ? "1fr 80px 120px" : "1fr 140px 120px 100px 100px 120px";
