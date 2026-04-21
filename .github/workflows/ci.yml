@@ -1,8 +1,9 @@
 name: CI
 
 on:
+  # Trigger on every pull request regardless of base branch so stacked
+  # PRs (PR B based on PR A while A is still open) still get CI coverage.
   pull_request:
-    branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
 
 # Cancel older runs when a PR gets new commits so we only ever test the tip.
