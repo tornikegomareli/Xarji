@@ -69,54 +69,70 @@ export function Analytics() {
         <SignalCard
           icon="⚠"
           title="Repeated declines"
-          count={`${monthFailed.length} this month · ${repeatedDeclines.length} merchant${repeatedDeclines.length === 1 ? "" : "s"} 2+ times`}
+          count={`${repeatedDeclines.length} merchant${
+            repeatedDeclines.length === 1 ? "" : "s"
+          } 2+ times · ${monthFailed.length} decline${monthFailed.length === 1 ? "" : "s"} overall`}
           level="high"
         >
-          {monthFailed.length === 0 ? (
-            <div style={{ color: T.muted, fontSize: 12 }}>No declined payments this month.</div>
+          {repeatedDeclines.length === 0 ? (
+            <div style={{ color: T.muted, fontSize: 12 }}>
+              {monthFailed.length === 0
+                ? "No declined payments this month."
+                : "No merchant was declined twice or more this month."}
+            </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {monthFailed.slice(0, 4).map((f) => (
-                <div
-                  key={f.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "10px 12px",
-                    background: T.panelAlt,
-                    borderRadius: 10,
-                  }}
-                >
+              {repeatedDeclines.slice(0, 4).map((r) => {
+                // Use the most recent failing SMS for this merchant as the
+                // supporting detail (reason + card + bank + date).
+                const recent = monthFailed.find((f) => (f.merchant || "Unknown") === r.merchant);
+                return (
                   <div
+                    key={r.merchant}
                     style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: 13,
-                      background: T.accentSoft,
-                      color: T.accent,
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      fontFamily: T.sans,
+                      gap: 10,
+                      padding: "10px 12px",
+                      background: T.panelAlt,
+                      borderRadius: 10,
                     }}
                   >
-                    {(f.merchant || "?").charAt(0)}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
-                      {f.merchant || "Unknown"}
+                    <div
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: 13,
+                        background: T.accentSoft,
+                        color: T.accent,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        fontFamily: T.sans,
+                      }}
+                    >
+                      {(r.merchant || "?").charAt(0)}
                     </div>
-                    <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>
-                      {f.failureReason || "—"} · ·{f.cardLastDigits || "—"} ·{" "}
-                      {new Date(f.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
+                        {r.merchant || "Unknown"} · ×{r.count}
+                      </div>
+                      <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>
+                        {recent?.failureReason || "—"} · ·{recent?.cardLastDigits || "—"} ·{" "}
+                        {recent
+                          ? new Date(recent.transactionDate).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })
+                          : "—"}
+                      </div>
                     </div>
+                    {recent && <Pill>{recent.bankSenderId}</Pill>}
                   </div>
-                  <Pill>{f.bankSenderId}</Pill>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </SignalCard>
