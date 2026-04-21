@@ -10,7 +10,8 @@
     "install-service": "bun run src/cli.ts install",
     "uninstall-service": "bun run src/cli.ts uninstall",
     "status": "bun run src/cli.ts status",
-    "test-parse": "bun run src/cli.ts test"
+    "test-parse": "bun run src/cli.ts test",
+    "test": "bun test"
   },
   "dependencies": {
     "@instantdb/admin": "latest",

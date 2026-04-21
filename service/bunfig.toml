@@ -1,0 +1,5 @@
+# Scope `bun test` to this project's own sources.
+# The vendored `instant/` clone contains its own test suite which is not
+# part of this project and requires dev dependencies we do not install.
+[test]
+root = "src"
