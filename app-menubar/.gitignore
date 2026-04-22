@@ -1,0 +1,10 @@
+# SwiftPM build artefacts — regenerated from source every build.
+.build/
+.swiftpm/
+Package.resolved
+
+# Packaged .app bundle and any staging output.
+dist/
+
+# OS noise
+.DS_Store
