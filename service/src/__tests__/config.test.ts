@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync, renameSync, writeFileSync, unlinkSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { existsSync, mkdirSync, renameSync, writeFileSync, unlinkSync } from "node:fs";
+import { dirname } from "node:path";
 import { loadConfig, isConfigured, hasSavedConfig, CONFIG_PATH } from "../config";
 
 /**
@@ -20,8 +19,17 @@ import { loadConfig, isConfigured, hasSavedConfig, CONFIG_PATH } from "../config
  */
 
 const BACKUP_PATH = `${CONFIG_PATH}.test-backup`;
+const CONFIG_DIR = dirname(CONFIG_PATH);
+
+function ensureConfigDir() {
+  // On CI the runner has no ~/.xarji yet, so writeFileSync would fail
+  // with ENOENT. The tests only need the directory to exist; actual
+  // config contents are stashed/restored around each test.
+  mkdirSync(CONFIG_DIR, { recursive: true });
+}
 
 function stashConfig() {
+  ensureConfigDir();
   if (existsSync(CONFIG_PATH)) renameSync(CONFIG_PATH, BACKUP_PATH);
 }
 function restoreConfig() {
