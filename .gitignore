@@ -1,0 +1,10 @@
+# macOS cruft
+.DS_Store
+
+# Build + release artefacts — regenerated from source.
+dist/
+
+# Local release configuration (signing identity, notary profile name).
+# .release.env.example is committed so others know what variables are
+# expected; .release.env with real values stays on the releaser's Mac.
+scripts/release/.release.env

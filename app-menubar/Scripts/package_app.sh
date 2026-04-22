@@ -28,13 +28,21 @@ SIGNING_MODE=${SIGNING_MODE:-adhoc}
 APP_IDENTITY=${APP_IDENTITY:-}
 XARJI_CORE_BINARY=${XARJI_CORE_BINARY:-"$REPO_ROOT/service/dist/xarji"}
 
+# Capture caller-provided values before sourcing version.env. Without
+# this guard `source` silently overwrites env vars the caller set, so
+# the release pipeline in scripts/release/build.sh would ship a bundle
+# stamped with whatever version.env holds instead of the version it
+# asked for.
+ENV_MARKETING_VERSION=${MARKETING_VERSION:-}
+ENV_BUILD_NUMBER=${BUILD_NUMBER:-}
+
 if [[ -f "$ROOT/version.env" ]]; then
   # shellcheck disable=SC1091
   source "$ROOT/version.env"
-else
-  MARKETING_VERSION=${MARKETING_VERSION:-0.1.0}
-  BUILD_NUMBER=${BUILD_NUMBER:-1}
 fi
+
+MARKETING_VERSION=${ENV_MARKETING_VERSION:-${MARKETING_VERSION:-0.1.0}}
+BUILD_NUMBER=${ENV_BUILD_NUMBER:-${BUILD_NUMBER:-1}}
 
 # Apple Silicon only — the whole app is single-arch by design.
 ARCH_LIST=( "arm64" )
