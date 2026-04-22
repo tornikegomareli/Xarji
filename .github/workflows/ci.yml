@@ -58,3 +58,27 @@ jobs:
       # check and the production bundle, so a single step is enough.
       - name: Build
         run: bun run build
+
+  menubar:
+    name: menu-bar app — swift build
+    # Swift builds require a macOS runner; arm64 matches the app's
+    # target architecture so we catch any arm64-only issues in CI.
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: app-menubar
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build (debug)
+        run: swift build -c debug --arch arm64
+
+      - name: Build (release)
+        run: swift build -c release --arch arm64
