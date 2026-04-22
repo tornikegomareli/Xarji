@@ -246,25 +246,16 @@ export async function applySetup(
     return { ok: false, completed, failedAt: "config", error: String(err) };
   }
 
-  // 4. Write .env files — best-effort, don't hard-fail the whole setup
-  try {
-    await writeFile(
-      join(SERVICE_DIR, ".env"),
-      `INSTANT_APP_ID=${appId}\nINSTANT_ADMIN_TOKEN=${adminToken}\n`
-    );
-    await writeFile(
-      join(CLIENT_DIR, ".env"),
-      `VITE_INSTANT_APP_ID=${appId}\n`
-    ).catch(() => {
-      // CLIENT_DIR may not exist in a compiled-binary install; that's fine.
-    });
-    completed.push("env");
-    await report("env", true);
-  } catch (err) {
-    // Non-fatal: dev-mode convenience files failing doesn't block a real
-    // install, since the runtime reads ~/.xarji/config.json directly.
-    await report("env", false, String(err));
-  }
+  // 4. .env files are deliberately NOT written from this path. They used
+  // to be a dev convenience but caused two cascading reloads mid-setup:
+  // bun --watch restarts when service/.env changes (killing the in-flight
+  // POST), and Vite restarts when client/.env changes (triggering a
+  // browser reload that races our own). The runtime always reads
+  // ~/.xarji/config.json directly, and the client now resolves the
+  // InstantDB app id by fetching /api/config when window.__XARJI_APP_ID__
+  // is unavailable, so neither file is needed.
+  completed.push("env");
+  await report("env", true);
 
   // 5. Initialise state.db
   try {
