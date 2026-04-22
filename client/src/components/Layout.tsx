@@ -14,21 +14,55 @@ import { usePayments } from "../hooks/useTransactions";
 import { useSignals } from "../hooks/useSignals";
 import { useCredits } from "../hooks/useCredits";
 import { useHealth } from "../hooks/useHealth";
-import { Onboarding } from "../pages/Onboarding";
+import {
+  Onboarding,
+  clearSetupTransitionFlag,
+  readSetupTransitionFlag,
+} from "../pages/Onboarding";
 
 export function Layout() {
   const [tweaks, setTweaks] = useState<InkTweaks>(() => loadTweaks());
   const theme = useMemo(() => buildTheme(tweaks), [tweaks]);
-  const health = useHealth();
+  const [transitioning, setTransitioning] = useState<boolean>(() => readSetupTransitionFlag());
+  const health = useHealth(transitioning ? 500 : 4000);
+  const transitionFlagPresent = readSetupTransitionFlag();
+  const [stuck, setStuck] = useState(false);
 
   useEffect(() => {
     saveTweaks(tweaks);
   }, [tweaks]);
 
+  useEffect(() => {
+    if (transitionFlagPresent && !transitioning) {
+      setTransitioning(true);
+    }
+  }, [transitionFlagPresent, transitioning]);
+
+  useEffect(() => {
+    if (!transitioning) {
+      setStuck(false);
+      return;
+    }
+
+    if (health.state === "running" || health.state === "paused") {
+      clearSetupTransitionFlag();
+      const id = requestAnimationFrame(() => setTransitioning(false));
+      return () => cancelAnimationFrame(id);
+    }
+
+    const id = setTimeout(() => setStuck(true), 12000);
+    return () => clearTimeout(id);
+  }, [transitioning, health.state]);
+
   return (
     <TweaksContext.Provider value={{ tweaks, setTweaks }}>
       <ThemeContext.Provider value={theme}>
-        {health.state === "loading" ? (
+        {/* Precedence MUST stay transitioning > unconfigured: the splash
+            is what bridges the post-setup reload, and falling through to
+            Onboarding while transitioning re-mounts it at step 0. */}
+        {transitioning ? (
+          <SetupTransitionSplash stuck={stuck} />
+        ) : health.state === "loading" ? (
           <LoadingSplash />
         ) : health.state === "unconfigured" ? (
           <>
@@ -97,6 +131,79 @@ function LoadingSplash() {
       }}
     >
       Loading…
+    </div>
+  );
+}
+
+/**
+ * Stand-in shown while the service finishes swapping into configured
+ * state after onboarding submits. Lives here (not inside Onboarding)
+ * because the whole point is to keep rendering something after the
+ * page reload, before we know the new health state.
+ */
+function SetupTransitionSplash({ stuck = false }: { stuck?: boolean }) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#0C0C0E",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 20,
+        color: "#F2F2F4",
+        fontFamily: "'Geist', 'Inter', system-ui, sans-serif",
+      }}
+    >
+      <div
+        style={{
+          width: 72,
+          height: 72,
+          borderRadius: 36,
+          background: "#FF5A3A",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 16px 40px rgba(255,90,58,0.35)",
+        }}
+      >
+        <svg width={34} height={34} viewBox="0 0 34 34" aria-hidden>
+          <path
+            d="M8 17.5 L14.5 24 L26 12"
+            stroke="#fff"
+            strokeWidth={3.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5 }}>You're all set.</div>
+      <div style={{ fontSize: 13, color: "rgba(242,242,244,0.62)" }}>
+        {stuck ? "Still finalising setup. Refresh once the service is ready." : "Loading your dashboard…"}
+      </div>
+      {stuck && (
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          style={{
+            marginTop: 8,
+            background: "transparent",
+            border: "none",
+            color: "rgba(242,242,244,0.78)",
+            fontSize: 13,
+            fontFamily: "'Geist', 'Inter', system-ui, sans-serif",
+            cursor: "pointer",
+            padding: "6px 10px",
+            borderRadius: 6,
+            textDecoration: "underline",
+            textUnderlineOffset: 3,
+          }}
+        >
+          Refresh
+        </button>
+      )}
     </div>
   );
 }

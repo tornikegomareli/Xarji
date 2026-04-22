@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { useTheme, useViewport } from "../ink/theme";
-import { Card, CardLabel, CardTitle, LiveDot, Pill } from "../ink/primitives";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useTheme } from "../ink/theme";
+import {
+  AppIdStep,
+  BanksStep,
+  PreviewStep,
+  TokenStep,
+  WelcomeStep,
+  type BankOption,
+} from "./OnboardingSteps";
 
-/**
- * Mirror of the serialized shape emitted by service/src/setup/schema.ts.
- * Kept intentionally loose — the server is the source of truth; this
- * interface exists so the component can render sensibly while waiting
- * for the live schema from /api/setup.
- */
-interface SerializedField {
+export interface SerializedField {
   id: string;
   label: string;
   kind: "string" | "secret" | "multiselect" | "boolean";
@@ -17,146 +19,163 @@ interface SerializedField {
   placeholder?: string;
   patternSource?: string;
   patternMessage?: string;
-  options?: { id: string; label: string; hint?: string }[];
+  options?: BankOption[];
   minSelections?: number;
   default?: unknown;
 }
 
-interface SerializedStep {
-  id: string;
-  title: string;
-  subtitle?: string;
-  fieldIds: string[];
-  /** "fields" (default) = form inputs. "preview" = live data sampler. */
-  kind?: "fields" | "preview";
-}
-
-interface PreviewSample {
-  merchant: string | null;
-  amount: number | null;
-  currency: string;
-  direction: "in" | "out";
-  transactionDate: string;
-  kind: string;
-}
-
-interface PreviewBank {
-  senderId: string;
-  messageCount: number;
-  parsedCount: number;
-  failedCount: number;
-  samples: PreviewSample[];
-}
-
-interface PreviewResult {
-  ok: boolean;
-  banks: PreviewBank[];
-  error?: string;
-  errorKind?: "full-disk-access" | "messages-db-missing" | "internal";
-}
-
-interface SerializedSchema {
-  fields: SerializedField[];
-  steps: SerializedStep[];
-}
-
 interface SetupGetResponse {
   configured: boolean;
-  schema: SerializedSchema;
+  schema: { fields: SerializedField[]; steps: unknown[] };
   currentValues: Record<string, unknown>;
 }
 
-type FieldValues = Record<string, unknown>;
+export type FieldValues = {
+  instantAppId: string;
+  instantAdminToken: string;
+  bankSenderIds: string[];
+};
 
-/** Reconstruct a validator from the serialized field's metadata. */
-function validateField(field: SerializedField, value: unknown): string | null {
-  if (field.kind === "multiselect") {
-    if (!Array.isArray(value) || value.length < (field.minSelections ?? 1)) {
-      return `Pick at least ${field.minSelections ?? 1}.`;
-    }
-    return null;
-  }
-  if (field.kind === "boolean") return null;
-  if (field.required && (typeof value !== "string" || !value.trim())) {
-    return `${field.label} is required.`;
-  }
-  if (field.patternSource && typeof value === "string") {
-    if (!new RegExp(field.patternSource).test(value.trim())) {
-      return field.patternMessage ?? "Invalid format.";
-    }
-  }
-  return null;
+export const SETUP_TRANSITION_FLAG = "xarji-setup-transition";
+
+type SetupStep = "welcome" | "app-id" | "token" | "banks" | "preview";
+
+const STEP_ORDER: SetupStep[] = ["welcome", "app-id", "token", "banks", "preview"];
+
+const UUID_REGEX =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+const STEP_TRANSITION = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -8 },
+  transition: { duration: 0.2, ease: [0.32, 0.72, 0, 1] as [number, number, number, number] },
+};
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-function fieldById(schema: SerializedSchema, id: string): SerializedField | undefined {
-  return schema.fields.find((f) => f.id === id);
+/**
+ * Poll /api/health until it reports `state: "running"`. Returns when
+ * running, or after the timeout — we don't throw, since the reload path
+ * still works (Layout will hold the splash for a bit longer if needed).
+ */
+async function waitForRunning(timeoutMs: number): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch("/api/health");
+      if (res.ok) {
+        const body = (await res.json()) as { state?: string };
+        if (body.state === "running") return;
+      }
+    } catch {
+      // Network blip during a hot-swap; retry.
+    }
+    await delay(250);
+  }
 }
 
-export function Onboarding({ onComplete }: { onComplete?: () => void }) {
+export function readSetupTransitionFlag(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.sessionStorage.getItem(SETUP_TRANSITION_FLAG) === "1";
+}
+
+export function persistSetupTransitionFlag() {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(SETUP_TRANSITION_FLAG, "1");
+}
+
+export function clearSetupTransitionFlag() {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(SETUP_TRANSITION_FLAG);
+}
+
+export function Onboarding() {
   const T = useTheme();
-  const vp = useViewport();
-
-  const [schema, setSchema] = useState<SerializedSchema | null>(null);
-  const [values, setValues] = useState<FieldValues>({});
-  const [fetching, setFetching] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [step, setStep] = useState<SetupStep>("welcome");
+  const [values, setValues] = useState<FieldValues>({
+    instantAppId: "",
+    instantAdminToken: "",
+    bankSenderIds: ["SOLO"],
+  });
+  const [fieldMeta, setFieldMeta] = useState<Record<string, SerializedField>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [previewReady, setPreviewReady] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Pull the live schema + current values from the server.
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
       try {
         const res = await fetch("/api/setup");
-        if (!res.ok) throw new Error(`setup responded ${res.status}`);
+        if (!res.ok) return;
         const body = (await res.json()) as SetupGetResponse;
         if (cancelled) return;
-        setSchema(body.schema);
-        // Pre-populate values: defaults from schema, overridden by any
-        // current values the server already has.
-        const initial: FieldValues = {};
-        for (const f of body.schema.fields) {
-          if (body.currentValues[f.id] !== undefined && body.currentValues[f.id] !== "") {
-            initial[f.id] = body.currentValues[f.id];
-          } else if (f.default !== undefined) {
-            initial[f.id] = f.default;
-          } else if (f.kind === "multiselect") {
-            initial[f.id] = [];
-          } else {
-            initial[f.id] = "";
+
+        const meta: Record<string, SerializedField> = {};
+        for (const field of body.schema.fields) meta[field.id] = field;
+        setFieldMeta(meta);
+
+        setValues((current) => {
+          const next = { ...current };
+
+          if (typeof body.currentValues.instantAppId === "string" && body.currentValues.instantAppId) {
+            next.instantAppId = body.currentValues.instantAppId;
           }
-        }
-        setValues(initial);
-      } catch (err) {
-        if (!cancelled) setSubmitError(err instanceof Error ? err.message : String(err));
-      } finally {
-        if (!cancelled) setFetching(false);
+
+          if (
+            Array.isArray(body.currentValues.bankSenderIds) &&
+            body.currentValues.bankSenderIds.length > 0
+          ) {
+            next.bankSenderIds = body.currentValues.bankSenderIds as string[];
+          }
+
+          return next;
+        });
+      } catch {
+        // Keep the bundled defaults when schema fetch is unavailable.
       }
     })();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const totalErrors = useMemo(() => {
-    if (!schema) return {} as Record<string, string>;
-    const out: Record<string, string> = {};
-    for (const f of schema.fields) {
-      const err = validateField(f, values[f.id]);
-      if (err) out[f.id] = err;
-    }
-    return out;
-  }, [schema, values]);
+  const stepIndex = STEP_ORDER.indexOf(step);
 
-  const allValid = Object.keys(totalErrors).length === 0;
+  const canContinue = useMemo<Record<SetupStep, boolean>>(
+    () => ({
+      welcome: true,
+      "app-id": UUID_REGEX.test(values.instantAppId.trim()),
+      token: values.instantAdminToken.trim().length >= 20,
+      banks: values.bankSenderIds.length > 0,
+      preview: previewReady,
+    }),
+    [previewReady, values]
+  );
 
-  async function submit() {
-    if (!schema) return;
-    setFieldErrors(totalErrors);
-    if (!allValid) return;
+  const goTo = useCallback((target: SetupStep) => {
+    setSubmitError(null);
+    setStep(target);
+  }, []);
+
+  const setValue = useCallback(
+    <K extends keyof FieldValues>(key: K, value: FieldValues[K]) => {
+      setSubmitError(null);
+      setValues((current) => ({ ...current, [key]: value }));
+    },
+    []
+  );
+
+  const submit = useCallback(async () => {
     setSubmitting(true);
     setSubmitError(null);
+    persistSetupTransitionFlag();
+
     try {
       const res = await fetch("/api/setup", {
         method: "POST",
@@ -169,645 +188,242 @@ export function Onboarding({ onComplete }: { onComplete?: () => void }) {
         fieldErrors?: Record<string, string>;
         warning?: string;
       };
+
       if (!body.ok) {
+        // Real validation failures: clear the flag so Layout drops the
+        // splash and the user can read the inline error on the right step.
+        clearSetupTransitionFlag();
+        setSubmitting(false);
+
+        if (body.fieldErrors?.instantAppId) {
+          setSubmitError(body.fieldErrors.instantAppId);
+          setStep("app-id");
+          return;
+        }
+
+        if (body.fieldErrors?.instantAdminToken) {
+          setSubmitError(body.fieldErrors.instantAdminToken);
+          setStep("token");
+          return;
+        }
+
+        if (body.fieldErrors?.bankSenderIds) {
+          setSubmitError(body.fieldErrors.bankSenderIds);
+          setStep("banks");
+          return;
+        }
+
         setSubmitError(body.error ?? "Setup failed");
-        if (body.fieldErrors) setFieldErrors(body.fieldErrors);
+        setStep("preview");
         return;
       }
-      // A `warning` with ok=true means config was saved but the
-      // parser failed to start in-process (for example Full Disk
-      // Access not granted yet). Reloading now would land the user
-      // back on this wizard with no explanation — surface the
-      // warning inline instead and let them recover before retrying.
+
       if (body.warning) {
+        clearSetupTransitionFlag();
+        setSubmitting(false);
         setSubmitError(body.warning);
+        setStep("preview");
         return;
       }
-      // Clean success: the service swaps itself into the configured
-      // state in place; a full reload reconnects the dashboard
-      // against the now-populated InstantDB and the Layout is
-      // rendered normally.
-      onComplete?.();
+
+      // Wait for /api/health to confirm the service is fully running
+      // before reloading. With this guarantee in place, the post-reload
+      // first poll resolves to "running" almost immediately and Layout
+      // never has a window where it could fall through to Welcome.
+      await waitForRunning(15000);
+      await delay(120);
       window.location.reload();
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : String(err));
-    } finally {
+    } catch (error) {
+      // Network errors here are most likely transient (a `bun --watch`
+      // restart killed the in-flight POST when service/.env was rewritten,
+      // or similar). DO NOT clear the flag — Layout will keep showing the
+      // setup splash and only dismiss it once /api/health flips to
+      // "running" or "paused". After 12s, the splash exposes a Refresh
+      // button as a manual escape hatch for genuinely-broken installs.
       setSubmitting(false);
+      setSubmitError(error instanceof Error ? error.message : String(error));
+      setStep("preview");
     }
-  }
-
-  if (fetching) {
-    return (
-      <Container>
-        <Card>
-          <CardLabel>Loading setup…</CardLabel>
-        </Card>
-      </Container>
-    );
-  }
-
-  if (!schema) {
-    return (
-      <Container>
-        <Card>
-          <CardTitle>Couldn't load setup schema</CardTitle>
-          <div style={{ color: T.muted, marginTop: 8, fontSize: 13, fontFamily: T.sans }}>
-            {submitError ?? "Unknown error"}
-          </div>
-        </Card>
-      </Container>
-    );
-  }
-
-  const narrow = vp.narrow;
+  }, [values]);
 
   return (
-    <Container>
-      <header style={{ marginBottom: 28 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: T.accent,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#fff",
-              fontWeight: 800,
-              fontSize: 22,
-              fontFamily: T.sans,
-            }}
-          >
-            X
-          </div>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5, color: T.text, fontFamily: T.sans }}>
-              Xarji
-            </div>
-            <div style={{ fontSize: 11, color: T.dim, fontFamily: T.mono }} lang="ka">
-              ხარჯი
-            </div>
-          </div>
-        </div>
-        <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.6, color: T.text, fontFamily: T.sans }}>
-          Welcome — let's get you set up.
-        </div>
-        <div style={{ marginTop: 8, fontSize: 14, color: T.muted, fontFamily: T.sans, lineHeight: 1.5 }}>
-          Xarji parses your bank SMS locally on this Mac and stores the results in an InstantDB
-          instance you own. Nothing ever leaves your machine except writes to the database you
-          point it at.
-        </div>
-      </header>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: T.bg,
+        color: T.text,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "36px 24px 56px",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: -180,
+          right: -160,
+          width: 460,
+          height: 460,
+          borderRadius: "50%",
+          background: T.accent,
+          opacity: 0.08,
+          filter: "blur(100px)",
+          pointerEvents: "none",
+        }}
+      />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-        {schema.steps.map((step, i) => (
-          <Card key={step.id} pad="22px 24px">
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-              <div
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 11,
-                  background: T.accentSoft,
-                  color: T.accent,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  fontFamily: T.sans,
-                }}
-              >
-                {i + 1}
-              </div>
-              <CardTitle size={16}>{step.title}</CardTitle>
-            </div>
-            {step.subtitle && (
-              <div
-                style={{
-                  fontSize: 12.5,
-                  color: T.muted,
-                  marginBottom: 16,
-                  fontFamily: T.sans,
-                  lineHeight: 1.5,
-                }}
-              >
-                {step.subtitle}
-              </div>
-            )}
-            {step.kind === "preview" ? (
-              <PreviewStep
-                senders={(values.bankSenderIds as string[] | undefined) ?? []}
+      <ProgressDots
+        current={stepIndex}
+        total={STEP_ORDER.length}
+        onJump={(targetIndex) => {
+          if (submitting || targetIndex >= stepIndex) return;
+          goTo(STEP_ORDER[targetIndex]);
+        }}
+      />
+
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 560,
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "stretch",
+          position: "relative",
+          zIndex: 1,
+          minHeight: 480,
+        }}
+      >
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={step}
+            initial={STEP_TRANSITION.initial}
+            animate={STEP_TRANSITION.animate}
+            exit={STEP_TRANSITION.exit}
+            transition={STEP_TRANSITION.transition}
+            style={{ width: "100%" }}
+          >
+            {step === "welcome" && <WelcomeStep onNext={() => goTo("app-id")} />}
+
+            {step === "app-id" && (
+              <AppIdStep
+                value={values.instantAppId}
+                onChange={(value) => setValue("instantAppId", value)}
+                canAdvance={canContinue["app-id"]}
+                onBack={() => goTo("welcome")}
+                onNext={() => goTo("token")}
+                fieldMeta={fieldMeta.instantAppId}
+                submitError={submitError}
               />
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {step.fieldIds.map((id) => {
-                  const field = fieldById(schema, id);
-                  if (!field) return null;
-                  return (
-                    <FieldRow
-                      key={id}
-                      field={field}
-                      value={values[id]}
-                      onChange={(v) => setValues((prev) => ({ ...prev, [id]: v }))}
-                      error={fieldErrors[id]}
-                    />
-                  );
-                })}
-              </div>
             )}
-          </Card>
-        ))}
 
-        <Card pad="22px 24px">
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-            <LiveDot color={T.amber} />
-            <CardTitle size={14}>macOS permissions</CardTitle>
-          </div>
-          <div
-            style={{
-              fontSize: 12.5,
-              color: T.muted,
-              fontFamily: T.sans,
-              lineHeight: 1.5,
-            }}
-          >
-            Xarji needs Full Disk Access so it can read your Messages database. Open System
-            Settings → Privacy &amp; Security → Full Disk Access and add the Xarji app (or your
-            terminal if you're running from source). You can continue setup now; if the parser
-            can't read <code>~/Library/Messages/chat.db</code> it will tell you after startup.
-          </div>
-        </Card>
+            {step === "token" && (
+              <TokenStep
+                value={values.instantAdminToken}
+                onChange={(value) => setValue("instantAdminToken", value)}
+                canAdvance={canContinue.token}
+                onBack={() => goTo("app-id")}
+                onNext={() => goTo("banks")}
+                fieldMeta={fieldMeta.instantAdminToken}
+                submitError={submitError}
+              />
+            )}
 
-        {submitError && (
-          <Card pad="16px 20px" accent>
-            <div style={{ color: T.accent, fontSize: 13, fontWeight: 600, fontFamily: T.sans }}>
-              {submitError}
-            </div>
-          </Card>
-        )}
+            {step === "banks" && (
+              <BanksStep
+                selected={values.bankSenderIds}
+                onChange={(value) => setValue("bankSenderIds", value)}
+                canAdvance={canContinue.banks}
+                onBack={() => goTo("token")}
+                onNext={() => goTo("preview")}
+                fieldMeta={fieldMeta.bankSenderIds}
+              />
+            )}
 
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginTop: 4,
-            flexDirection: narrow ? "column" : "row",
-            gap: 12,
-          }}
-        >
-          <div style={{ fontSize: 11, color: T.dim, fontFamily: T.mono }}>
-            {allValid ? "Ready to continue" : `${Object.keys(totalErrors).length} field(s) need attention`}
-          </div>
-          <button
-            type="button"
-            disabled={!allValid || submitting}
-            onClick={() => void submit()}
-            style={{
-              padding: "12px 22px",
-              borderRadius: 12,
-              border: "none",
-              background: !allValid || submitting ? T.panelAlt : T.accent,
-              color: !allValid || submitting ? T.muted : "#fff",
-              fontSize: 14,
-              fontWeight: 700,
-              fontFamily: T.sans,
-              cursor: !allValid || submitting ? "not-allowed" : "pointer",
-              letterSpacing: 0.2,
-            }}
-          >
-            {submitting ? "Applying…" : "Finish setup"}
-          </button>
-        </div>
+            {step === "preview" && (
+              <PreviewStep
+                senders={values.bankSenderIds}
+                onBack={() => goTo("banks")}
+                onFinish={() => void submit()}
+                submitError={submitError}
+                onReadyChange={setPreviewReady}
+                submitting={submitting}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
-    </Container>
-  );
-}
-
-function Container({ children }: { children: React.ReactNode }) {
-  const T = useTheme();
-  return (
-    <div style={{ minHeight: "100vh", background: T.bg, padding: "48px 32px", display: "flex", justifyContent: "center" }}>
-      <div style={{ maxWidth: 720, width: "100%" }}>{children}</div>
     </div>
   );
 }
 
-function FieldRow({
-  field,
-  value,
-  onChange,
-  error,
+function ProgressDots({
+  current,
+  total,
+  onJump,
 }: {
-  field: SerializedField;
-  value: unknown;
-  onChange: (v: unknown) => void;
-  error: string | undefined;
+  current: number;
+  total: number;
+  onJump: (targetIndex: number) => void;
 }) {
   const T = useTheme();
 
-  if (field.kind === "multiselect") {
-    const selected = (value as string[]) ?? [];
-    return (
-      <div>
-        <Label text={field.label} help={field.help} />
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {(field.options ?? []).map((opt) => {
-            const on = selected.includes(opt.id);
-            return (
-              <button
-                type="button"
-                key={opt.id}
-                onClick={() =>
-                  onChange(
-                    on ? selected.filter((s) => s !== opt.id) : [...selected, opt.id]
-                  )
-                }
-                style={{
-                  textAlign: "left",
-                  padding: "12px 14px",
-                  borderRadius: 10,
-                  background: on ? T.accentSoft : T.panelAlt,
-                  color: on ? T.accent : T.text,
-                  border: `1px solid ${on ? T.accent + "55" : T.line}`,
-                  cursor: "pointer",
-                  fontFamily: T.sans,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                }}
-              >
-                <span
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 5,
-                    border: `1px solid ${on ? T.accent : T.lineStrong}`,
-                    background: on ? T.accent : "transparent",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#fff",
-                    fontSize: 12,
-                    fontWeight: 800,
-                  }}
-                >
-                  {on ? "✓" : ""}
-                </span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 600 }}>{opt.label}</span>
-                  {opt.hint && (
-                    <span style={{ display: "block", fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
-                      {opt.hint}
-                    </span>
-                  )}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {error && <FieldError text={error} />}
-      </div>
-    );
-  }
-
-  const isSecret = field.kind === "secret";
-
-  return (
-    <div>
-      <Label text={field.label} help={field.help} required={field.required} />
-      <input
-        type={isSecret ? "password" : "text"}
-        value={typeof value === "string" ? value : ""}
-        placeholder={field.placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        spellCheck={false}
-        autoCapitalize="off"
-        autoComplete={isSecret ? "off" : "off"}
-        style={{
-          width: "100%",
-          padding: "10px 14px",
-          borderRadius: 10,
-          border: `1px solid ${error ? T.accent + "66" : T.line}`,
-          background: T.panelAlt,
-          color: T.text,
-          fontSize: 13.5,
-          fontFamily: isSecret ? T.mono : T.sans,
-          outline: "none",
-          boxSizing: "border-box",
-        }}
-      />
-      {error && <FieldError text={error} />}
-      {isSecret && (
-        <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
-          <Pill bg="rgba(106,163,255,0.12)" color={T.blue}>
-            Stored locally
-          </Pill>
-          <span style={{ fontSize: 11, color: T.dim, fontFamily: T.sans }}>
-            written to ~/.xarji/config.json on this Mac only
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Label({ text, help, required }: { text: string; help?: string; required?: boolean }) {
-  const T = useTheme();
-  return (
-    <div style={{ marginBottom: 6 }}>
-      <label
-        style={{
-          fontSize: 12.5,
-          fontWeight: 600,
-          color: T.text,
-          fontFamily: T.sans,
-          letterSpacing: 0.1,
-        }}
-      >
-        {text}
-        {required && <span style={{ color: T.accent, marginLeft: 4 }}>*</span>}
-      </label>
-      {help && (
-        <div
-          style={{
-            fontSize: 11.5,
-            color: T.muted,
-            marginTop: 4,
-            fontFamily: T.sans,
-            lineHeight: 1.5,
-          }}
-        >
-          {help}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FieldError({ text }: { text: string }) {
-  const T = useTheme();
   return (
     <div
       style={{
-        marginTop: 6,
-        fontSize: 11.5,
-        color: T.accent,
-        fontFamily: T.sans,
-      }}
-    >
-      {text}
-    </div>
-  );
-}
-
-/**
- * Live preview step: takes the currently-selected bank senders, hits
- * /api/preview, and renders per-bank counts + a handful of sample
- * transactions so the user sees their own real data before committing.
- * Re-fetches automatically when the sender list changes.
- */
-function PreviewStep({ senders }: { senders: string[] }) {
-  const T = useTheme();
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<PreviewResult | null>(null);
-  const key = senders.slice().sort().join("|");
-
-  useEffect(() => {
-    if (senders.length === 0) {
-      setResult(null);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    (async () => {
-      try {
-        const res = await fetch("/api/preview", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ senders }),
-        });
-        const body = (await res.json()) as PreviewResult;
-        if (!cancelled) setResult(body);
-      } catch (err) {
-        if (!cancelled) {
-          setResult({
-            ok: false,
-            banks: [],
-            error: err instanceof Error ? err.message : String(err),
-            errorKind: "internal",
-          });
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // `key` is the stable dependency (serialised + sorted senders).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
-  if (senders.length === 0) {
-    return (
-      <div style={{ color: T.muted, fontSize: 12.5, fontFamily: T.sans }}>
-        Pick at least one bank in the step above to see a preview.
-      </div>
-    );
-  }
-
-  if (loading && !result) {
-    return (
-      <div style={{ color: T.muted, fontSize: 12.5, fontFamily: T.sans }}>
-        Scanning Messages.app…
-      </div>
-    );
-  }
-
-  if (result && !result.ok) {
-    return <PreviewError result={result} />;
-  }
-
-  if (!result) return null;
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {result.banks.map((bank) => (
-        <PreviewBankCard key={bank.senderId} bank={bank} />
-      ))}
-      <div
-        style={{
-          fontSize: 11,
-          color: T.dim,
-          fontFamily: T.mono,
-          marginTop: 4,
-          letterSpacing: 0.3,
-        }}
-      >
-        Nothing is saved yet. Hit "Finish setup" below to write your config and start syncing.
-      </div>
-    </div>
-  );
-}
-
-function PreviewError({ result }: { result: PreviewResult }) {
-  const T = useTheme();
-  const isDiskAccess = result.errorKind === "full-disk-access";
-  return (
-    <div
-      style={{
-        padding: "14px 16px",
-        borderRadius: 10,
-        border: `1px solid ${T.accent}55`,
-        background: T.accentSoft,
         display: "flex",
-        flexDirection: "column",
         gap: 10,
+        marginBottom: 40,
+        minHeight: 10,
       }}
     >
-      <div style={{ fontSize: 13, fontWeight: 700, color: T.accent, fontFamily: T.sans }}>
-        {isDiskAccess ? "Xarji needs Full Disk Access" : "Couldn't read Messages"}
-      </div>
-      <div style={{ fontSize: 12.5, color: T.text, fontFamily: T.sans, lineHeight: 1.5 }}>
-        {result.error}
-      </div>
-      {isDiskAccess && (
-        <ol
-          style={{
-            margin: 0,
-            paddingLeft: 18,
-            fontSize: 12.5,
-            color: T.muted,
-            fontFamily: T.sans,
-            lineHeight: 1.6,
-          }}
-        >
-          <li>Open System Settings → Privacy &amp; Security → Full Disk Access.</li>
-          <li>Enable Xarji (or your terminal, if running from source).</li>
-          <li>Quit and re-launch Xarji, then reload this page.</li>
-        </ol>
-      )}
+      {Array.from({ length: total }, (_, index) => {
+        const isActive = index === current;
+        const isDone = index < current;
+
+        return (
+          <button
+            key={index}
+            type="button"
+            aria-label={`Jump to step ${index + 1}`}
+            disabled={!isDone}
+            onClick={() => onJump(index)}
+            style={{
+              padding: 0,
+              border: "none",
+              background: "transparent",
+              cursor: isDone ? "pointer" : "default",
+              height: 6,
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <motion.span
+              layout
+              initial={false}
+              animate={{
+                width: isActive ? 24 : 6,
+                backgroundColor: isActive
+                  ? T.accent
+                  : isDone
+                    ? `${T.accent}99`
+                    : T.faint,
+              }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              style={{
+                height: 6,
+                borderRadius: 3,
+                display: "block",
+              }}
+            />
+          </button>
+        );
+      })}
     </div>
   );
-}
-
-function PreviewBankCard({ bank }: { bank: PreviewBank }) {
-  const T = useTheme();
-  const hasData = bank.parsedCount > 0;
-  return (
-    <div
-      style={{
-        padding: "14px 16px",
-        borderRadius: 12,
-        background: T.panelAlt,
-        border: `1px solid ${T.line}`,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, justifyContent: "space-between", flexWrap: "wrap" }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
-          {bank.senderId}
-        </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: T.muted,
-            fontFamily: T.mono,
-            letterSpacing: 0.3,
-          }}
-        >
-          {bank.messageCount.toLocaleString("en-US")} SMS ·{" "}
-          <span style={{ color: hasData ? T.green : T.muted }}>
-            {bank.parsedCount.toLocaleString("en-US")} parsed
-          </span>
-          {bank.failedCount > 0 ? ` · ${bank.failedCount.toLocaleString("en-US")} skipped` : ""}
-        </div>
-      </div>
-      {hasData ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {bank.samples.map((sample, i) => (
-            <PreviewSampleRow key={i} sample={sample} />
-          ))}
-        </div>
-      ) : (
-        <div style={{ color: T.muted, fontSize: 12, fontFamily: T.sans, lineHeight: 1.4 }}>
-          {bank.messageCount === 0
-            ? "No SMS from this sender in Messages.app. If this is wrong, double-check the exact sender id (TBC uses \"TBC SMS\" with a space)."
-            : "Messages present but nothing recognised yet — usually means the SMS are promos or notices rather than transactions."}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PreviewSampleRow({ sample }: { sample: PreviewSample }) {
-  const T = useTheme();
-  const inbound = sample.direction === "in";
-  const amount = sample.amount;
-  const symbol = sample.currency === "GEL" ? "₾" : sample.currency === "USD" ? "$" : sample.currency === "EUR" ? "€" : `${sample.currency} `;
-  const amountText =
-    amount == null
-      ? "—"
-      : `${inbound ? "+" : "−"}${symbol}${amount.toFixed(2)}`;
-
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 90px",
-        alignItems: "baseline",
-        gap: 12,
-        fontSize: 12,
-        fontFamily: T.sans,
-      }}
-    >
-      <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            color: T.text,
-            fontWeight: 600,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {sample.merchant || "—"}
-        </div>
-        <div style={{ fontSize: 10.5, color: T.dim, fontFamily: T.mono, marginTop: 2 }}>
-          {sample.kind} · {formatPreviewDate(sample.transactionDate)}
-        </div>
-      </div>
-      <div
-        style={{
-          textAlign: "right",
-          fontVariantNumeric: "tabular-nums",
-          color: inbound ? T.green : T.text,
-          fontWeight: 700,
-        }}
-      >
-        {amountText}
-      </div>
-    </div>
-  );
-}
-
-function formatPreviewDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  } catch {
-    return iso;
-  }
 }
