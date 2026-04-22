@@ -40,10 +40,19 @@ export interface FieldDef {
   minSelections?: number;
 }
 
+export type StepKind = "fields" | "preview";
+
 export interface StepDef {
   id: string;
   title: string;
   subtitle?: string;
+  /**
+   * "fields" — ordinary form step, the UI renders controls for each fieldId.
+   * "preview" — renders the live /api/preview output instead; fieldIds is
+   * still populated with the field ids whose values drive the preview
+   * (typically `["bankSenderIds"]`) so the step's inputs are explicit.
+   */
+  kind?: StepKind;
   fieldIds: string[];
 }
 
@@ -117,12 +126,21 @@ export const STEPS: StepDef[] = [
     title: "Connect your InstantDB",
     subtitle: "Xarji stores parsed transactions in a database you own. Free tier is plenty.",
     fieldIds: ["instantAppId", "instantAdminToken"],
+    kind: "fields",
   },
   {
     id: "banks",
     title: "Pick your banks",
     subtitle: "Only messages from the chosen sender IDs will be parsed.",
     fieldIds: ["bankSenderIds"],
+    kind: "fields",
+  },
+  {
+    id: "preview",
+    title: "Preview your data",
+    subtitle: "A read-only peek at what Xarji will import. Nothing is saved yet.",
+    fieldIds: ["bankSenderIds"],
+    kind: "preview",
   },
 ];
 

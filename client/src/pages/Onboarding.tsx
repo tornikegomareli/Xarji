@@ -27,6 +27,32 @@ interface SerializedStep {
   title: string;
   subtitle?: string;
   fieldIds: string[];
+  /** "fields" (default) = form inputs. "preview" = live data sampler. */
+  kind?: "fields" | "preview";
+}
+
+interface PreviewSample {
+  merchant: string | null;
+  amount: number | null;
+  currency: string;
+  direction: "in" | "out";
+  transactionDate: string;
+  kind: string;
+}
+
+interface PreviewBank {
+  senderId: string;
+  messageCount: number;
+  parsedCount: number;
+  failedCount: number;
+  samples: PreviewSample[];
+}
+
+interface PreviewResult {
+  ok: boolean;
+  banks: PreviewBank[];
+  error?: string;
+  errorKind?: "full-disk-access" | "messages-db-missing" | "internal";
 }
 
 interface SerializedSchema {
@@ -271,21 +297,27 @@ export function Onboarding({ onComplete }: { onComplete?: () => void }) {
                 {step.subtitle}
               </div>
             )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {step.fieldIds.map((id) => {
-                const field = fieldById(schema, id);
-                if (!field) return null;
-                return (
-                  <FieldRow
-                    key={id}
-                    field={field}
-                    value={values[id]}
-                    onChange={(v) => setValues((prev) => ({ ...prev, [id]: v }))}
-                    error={fieldErrors[id]}
-                  />
-                );
-              })}
-            </div>
+            {step.kind === "preview" ? (
+              <PreviewStep
+                senders={(values.bankSenderIds as string[] | undefined) ?? []}
+              />
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {step.fieldIds.map((id) => {
+                  const field = fieldById(schema, id);
+                  if (!field) return null;
+                  return (
+                    <FieldRow
+                      key={id}
+                      field={field}
+                      value={values[id]}
+                      onChange={(v) => setValues((prev) => ({ ...prev, [id]: v }))}
+                      error={fieldErrors[id]}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </Card>
         ))}
 
@@ -530,4 +562,252 @@ function FieldError({ text }: { text: string }) {
       {text}
     </div>
   );
+}
+
+/**
+ * Live preview step: takes the currently-selected bank senders, hits
+ * /api/preview, and renders per-bank counts + a handful of sample
+ * transactions so the user sees their own real data before committing.
+ * Re-fetches automatically when the sender list changes.
+ */
+function PreviewStep({ senders }: { senders: string[] }) {
+  const T = useTheme();
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<PreviewResult | null>(null);
+  const key = senders.slice().sort().join("|");
+
+  useEffect(() => {
+    if (senders.length === 0) {
+      setResult(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const res = await fetch("/api/preview", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ senders }),
+        });
+        const body = (await res.json()) as PreviewResult;
+        if (!cancelled) setResult(body);
+      } catch (err) {
+        if (!cancelled) {
+          setResult({
+            ok: false,
+            banks: [],
+            error: err instanceof Error ? err.message : String(err),
+            errorKind: "internal",
+          });
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // `key` is the stable dependency (serialised + sorted senders).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  if (senders.length === 0) {
+    return (
+      <div style={{ color: T.muted, fontSize: 12.5, fontFamily: T.sans }}>
+        Pick at least one bank in the step above to see a preview.
+      </div>
+    );
+  }
+
+  if (loading && !result) {
+    return (
+      <div style={{ color: T.muted, fontSize: 12.5, fontFamily: T.sans }}>
+        Scanning Messages.app…
+      </div>
+    );
+  }
+
+  if (result && !result.ok) {
+    return <PreviewError result={result} />;
+  }
+
+  if (!result) return null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {result.banks.map((bank) => (
+        <PreviewBankCard key={bank.senderId} bank={bank} />
+      ))}
+      <div
+        style={{
+          fontSize: 11,
+          color: T.dim,
+          fontFamily: T.mono,
+          marginTop: 4,
+          letterSpacing: 0.3,
+        }}
+      >
+        Nothing is saved yet. Hit "Finish setup" below to write your config and start syncing.
+      </div>
+    </div>
+  );
+}
+
+function PreviewError({ result }: { result: PreviewResult }) {
+  const T = useTheme();
+  const isDiskAccess = result.errorKind === "full-disk-access";
+  return (
+    <div
+      style={{
+        padding: "14px 16px",
+        borderRadius: 10,
+        border: `1px solid ${T.accent}55`,
+        background: T.accentSoft,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 700, color: T.accent, fontFamily: T.sans }}>
+        {isDiskAccess ? "Xarji needs Full Disk Access" : "Couldn't read Messages"}
+      </div>
+      <div style={{ fontSize: 12.5, color: T.text, fontFamily: T.sans, lineHeight: 1.5 }}>
+        {result.error}
+      </div>
+      {isDiskAccess && (
+        <ol
+          style={{
+            margin: 0,
+            paddingLeft: 18,
+            fontSize: 12.5,
+            color: T.muted,
+            fontFamily: T.sans,
+            lineHeight: 1.6,
+          }}
+        >
+          <li>Open System Settings → Privacy &amp; Security → Full Disk Access.</li>
+          <li>Enable Xarji (or your terminal, if running from source).</li>
+          <li>Quit and re-launch Xarji, then reload this page.</li>
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function PreviewBankCard({ bank }: { bank: PreviewBank }) {
+  const T = useTheme();
+  const hasData = bank.parsedCount > 0;
+  return (
+    <div
+      style={{
+        padding: "14px 16px",
+        borderRadius: 12,
+        background: T.panelAlt,
+        border: `1px solid ${T.line}`,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
+          {bank.senderId}
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: T.muted,
+            fontFamily: T.mono,
+            letterSpacing: 0.3,
+          }}
+        >
+          {bank.messageCount.toLocaleString("en-US")} SMS ·{" "}
+          <span style={{ color: hasData ? T.green : T.muted }}>
+            {bank.parsedCount.toLocaleString("en-US")} parsed
+          </span>
+          {bank.failedCount > 0 ? ` · ${bank.failedCount.toLocaleString("en-US")} skipped` : ""}
+        </div>
+      </div>
+      {hasData ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {bank.samples.map((sample, i) => (
+            <PreviewSampleRow key={i} sample={sample} />
+          ))}
+        </div>
+      ) : (
+        <div style={{ color: T.muted, fontSize: 12, fontFamily: T.sans, lineHeight: 1.4 }}>
+          {bank.messageCount === 0
+            ? "No SMS from this sender in Messages.app. If this is wrong, double-check the exact sender id (TBC uses \"TBC SMS\" with a space)."
+            : "Messages present but nothing recognised yet — usually means the SMS are promos or notices rather than transactions."}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PreviewSampleRow({ sample }: { sample: PreviewSample }) {
+  const T = useTheme();
+  const inbound = sample.direction === "in";
+  const amount = sample.amount;
+  const symbol = sample.currency === "GEL" ? "₾" : sample.currency === "USD" ? "$" : sample.currency === "EUR" ? "€" : `${sample.currency} `;
+  const amountText =
+    amount == null
+      ? "—"
+      : `${inbound ? "+" : "−"}${symbol}${amount.toFixed(2)}`;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr 90px",
+        alignItems: "baseline",
+        gap: 12,
+        fontSize: 12,
+        fontFamily: T.sans,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            color: T.text,
+            fontWeight: 600,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {sample.merchant || "—"}
+        </div>
+        <div style={{ fontSize: 10.5, color: T.dim, fontFamily: T.mono, marginTop: 2 }}>
+          {sample.kind} · {formatPreviewDate(sample.transactionDate)}
+        </div>
+      </div>
+      <div
+        style={{
+          textAlign: "right",
+          fontVariantNumeric: "tabular-nums",
+          color: inbound ? T.green : T.text,
+          fontWeight: 700,
+        }}
+      >
+        {amountText}
+      </div>
+    </div>
+  );
+}
+
+function formatPreviewDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return iso;
+  }
 }

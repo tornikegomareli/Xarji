@@ -20,6 +20,7 @@ import { allBanks } from "./parser";
 import { CLIENT_ASSETS } from "./generated/client-assets";
 import { serializeSchema, type FieldMap } from "./setup/schema";
 import { applySetup } from "./setup/apply";
+import { previewSenders } from "./setup/preview";
 
 export interface HttpServerOptions {
   port: number;
@@ -237,6 +238,32 @@ export function startHttpServer(opts: HttpServerOptions): HttpServerHandle {
           schema: serializeSchema(),
           currentValues: currentSetupValues(opts.config),
         });
+      }
+      if (path === "/api/preview" && req.method === "POST") {
+        let body: { senders?: unknown };
+        try {
+          body = (await req.json()) as { senders?: unknown };
+        } catch {
+          return json({ ok: false, error: "Request body must be valid JSON", errorKind: "internal" }, { status: 400 });
+        }
+        const rawSenders = body.senders;
+        if (!Array.isArray(rawSenders) || rawSenders.length === 0) {
+          return json(
+            { ok: false, error: "`senders` must be a non-empty array of strings.", errorKind: "internal" },
+            { status: 400 }
+          );
+        }
+        const senders = rawSenders
+          .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+          .map((s) => s.trim());
+        if (senders.length === 0) {
+          return json(
+            { ok: false, error: "`senders` contained no non-empty strings.", errorKind: "internal" },
+            { status: 400 }
+          );
+        }
+        const result = previewSenders(senders);
+        return json(result, { status: result.ok ? 200 : 200 });
       }
       if (path === "/api/setup" && req.method === "POST") {
         let body: unknown;

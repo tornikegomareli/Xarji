@@ -28,6 +28,14 @@ final class StatusBarController: NSObject, NSMenuDelegate {
 
     private var snapshot: HealthSnapshot = .loading
 
+    /// First-run convenience: the first time the poller reports the
+    /// service as .unconfigured, automatically open the dashboard so
+    /// the user lands on the onboarding wizard without having to
+    /// discover the menu-bar icon. Latched so subsequent .unconfigured
+    /// polls (e.g. the user closing their browser tab) don't re-open
+    /// the browser every four seconds.
+    private var hasAutoOpenedForSetup = false
+
     init(
         baseURL: URL,
         onOpenDashboard: @escaping () -> Void,
@@ -82,9 +90,19 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     /// AppKit state.
     nonisolated func apply(_ newSnapshot: HealthSnapshot) {
         Task { @MainActor [weak self] in
-            self?.snapshot = newSnapshot
-            self?.render()
+            guard let self else { return }
+            self.snapshot = newSnapshot
+            self.render()
+            self.autoOpenIfFirstUnconfigured(newSnapshot)
         }
+    }
+
+    private func autoOpenIfFirstUnconfigured(_ snapshot: HealthSnapshot) {
+        guard !hasAutoOpenedForSetup else { return }
+        guard snapshot.state == .unconfigured else { return }
+        hasAutoOpenedForSetup = true
+        logger.info("first unconfigured snapshot — auto-opening dashboard")
+        onOpenDashboard()
     }
 
     private func render() {

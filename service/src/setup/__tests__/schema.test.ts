@@ -129,6 +129,14 @@ describe("STEPS structure", () => {
     expect(idx("banks")).toBeGreaterThan(-1);
     expect(idx("instantdb")).toBeLessThan(idx("banks"));
   });
+  test("the preview step comes after banks and is marked as a preview", () => {
+    const idx = (id: string) => STEPS.findIndex((s) => s.id === id);
+    expect(idx("preview")).toBeGreaterThan(idx("banks"));
+    expect(STEPS[idx("preview")].kind).toBe("preview");
+    // Preview must reference the bank selector so the UI knows which
+    // senders to forward to /api/preview.
+    expect(STEPS[idx("preview")].fieldIds).toContain("bankSenderIds");
+  });
 });
 
 describe("serializeSchema — safe to send over HTTP", () => {

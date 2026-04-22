@@ -75,9 +75,15 @@ export async function runSetupTui(): Promise<number> {
 
   const values: FieldMap = {};
 
-  for (let i = 0; i < STEPS.length; i++) {
-    const step = STEPS[i];
-    tui.step(i + 1, STEPS.length + 2, step.title);
+  // Preview steps render live data in the web wizard; in the terminal
+  // we skip them (keeping the TUI behaviour identical to what it was
+  // before the preview step landed) rather than half-implementing a
+  // textual preview that would just duplicate what `bun run
+  // src/diagnose-month.ts` already does.
+  const interactiveSteps = STEPS.filter((s) => (s.kind ?? "fields") === "fields");
+  for (let i = 0; i < interactiveSteps.length; i++) {
+    const step = interactiveSteps[i];
+    tui.step(i + 1, interactiveSteps.length + 2, step.title);
     if (step.subtitle) {
       tui.println();
       tui.info(`  ${step.subtitle}`);
@@ -96,7 +102,7 @@ export async function runSetupTui(): Promise<number> {
 
   // Permissions check — informational, not part of the schema because
   // it's a macOS thing rather than a config field.
-  tui.step(STEPS.length + 1, STEPS.length + 2, "macOS Permissions");
+  tui.step(interactiveSteps.length + 1, interactiveSteps.length + 2, "macOS Permissions");
   tui.println();
   const hasDisk = await checkFullDiskAccess();
   if (hasDisk) {
@@ -118,7 +124,7 @@ export async function runSetupTui(): Promise<number> {
   tui.println();
 
   // Persistence + bootstrap.
-  tui.step(STEPS.length + 2, STEPS.length + 2, "Saving configuration");
+  tui.step(interactiveSteps.length + 2, interactiveSteps.length + 2, "Saving configuration");
   tui.println();
 
   const stepLabels: Record<ApplyStep, string> = {
