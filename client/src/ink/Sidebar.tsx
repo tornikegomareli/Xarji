@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { useTheme } from "./theme";
 import { Logo, LiveDot } from "./primitives";
+import { usePwaInstall } from "../hooks/usePwaInstall";
 
 interface SidebarItem {
   to: string;
@@ -19,6 +20,7 @@ export function Sidebar({
   incomeCount?: number;
 }) {
   const T = useTheme();
+  const pwa = usePwaInstall();
   const items: SidebarItem[] = [
     { to: "/", name: "Overview", glyph: "◉" },
     { to: "/transactions", name: "Transactions", glyph: "≡", badge: txCount ? txCount.toLocaleString("en-US") : undefined },
@@ -91,6 +93,38 @@ export function Sidebar({
         ))}
       </nav>
       <div style={{ flex: 1 }} />
+      {pwa.canInstall && !pwa.isStandalone && (
+        <button
+          type="button"
+          onClick={() => void pwa.install()}
+          style={{
+            padding: "11px 12px",
+            borderRadius: T.rMd,
+            background: T.accentSoft,
+            border: `1px solid ${T.accent}55`,
+            color: T.accent,
+            fontSize: 12.5,
+            fontWeight: 700,
+            fontFamily: T.sans,
+            letterSpacing: 0.1,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            textAlign: "left",
+            transition: "background 150ms ease-out, border-color 150ms ease-out",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.borderColor = T.accent;
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.borderColor = `${T.accent}55`;
+          }}
+        >
+          <span style={{ fontSize: 14, lineHeight: 1 }}>↓</span>
+          <span style={{ flex: 1 }}>Install as app</span>
+        </button>
+      )}
       <div style={{ padding: 14, background: T.panel, borderRadius: T.rMd, border: `1px solid ${T.line}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
           <LiveDot />
