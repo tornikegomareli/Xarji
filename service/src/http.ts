@@ -102,6 +102,7 @@ function contentTypeFor(urlPath: string): string {
   if (urlPath.endsWith(".png")) return "image/png";
   if (urlPath.endsWith(".ico")) return "image/x-icon";
   if (urlPath.endsWith(".json")) return "application/json; charset=utf-8";
+  if (urlPath.endsWith(".webmanifest")) return "application/manifest+json; charset=utf-8";
   if (urlPath.endsWith(".woff2")) return "font/woff2";
   return "application/octet-stream";
 }
