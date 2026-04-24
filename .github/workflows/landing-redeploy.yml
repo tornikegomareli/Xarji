@@ -1,0 +1,31 @@
+name: Redeploy landing on release
+
+# When a GitHub release is published on this repo, push an empty commit to
+# tornikegomareli/Xarji-landing. Railway's auto-deploy picks up the push and
+# rebuilds the static site, whose build-time GitHub API fetch then bakes in
+# the new version / date / size / sha / DMG URL automatically.
+#
+# Requires a fine-grained PAT stored as the LANDING_REPO_PAT secret, scoped
+# to Xarji-landing with contents:write. See the landing repo's CLAUDE.md for
+# the full pipeline description.
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  redeploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: tornikegomareli/Xarji-landing
+          token: ${{ secrets.LANDING_REPO_PAT }}
+          fetch-depth: 1
+
+      - name: Push empty commit to trigger Railway redeploy
+        run: |
+          git config user.name  "xarji-release"
+          git config user.email "xarji-release@users.noreply.github.com"
+          git commit --allow-empty -m "Redeploy landing for ${{ github.event.release.tag_name }}"
+          git push
