@@ -1,5 +1,5 @@
 /**
- * TBC Bank — pure Georgian parser (no transliteration).
+ * TBC Bank — real sender id "TBC SMS" (not "TBC").
  *
  * All patterns match Georgian Unicode directly. TBC sends SMS in Georgian
  * script (U+10D0–U+10FF); comments show the human-readable transliteration
