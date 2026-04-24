@@ -449,14 +449,20 @@ gh release upload v0.X.Y \
 
 Both `.app` and `.dmg` are notarized. The app staple lets users run after extracting; the DMG staple prevents Gatekeeper from rejecting the disk image on mount.
 
-### 8.4 Tag → GitHub release workflow
+### 8.4 Landing-page auto-redeploy on release
 
-`.github/workflows/release.yml`:
+`.github/workflows/landing-redeploy.yml`:
 
-- Fires on tag push matching `v*.*.*`.
-- Verifies the tagged commit is reachable from `origin/main` — prevents accidental releases from feature branches that happen to have a semver tag.
-- Runs `gh release create <tag> --title <tag> --generate-notes --verify-tag`.
-- Does **not** build the DMG. Notarization requires a Mac with your Developer ID cert + notary profile; we keep that local rather than shipping credentials to GitHub Actions.
+- Fires on `release: types: [published]` — i.e. whenever a release is published on this repo (via `gh release create` or the GitHub UI).
+- Checks out [tornikegomareli/Xarji-landing](https://github.com/tornikegomareli/Xarji-landing) using a fine-grained PAT stored as the `LANDING_REPO_PAT` secret (contents:write on Xarji-landing, nothing else).
+- Pushes a single empty commit: `Redeploy landing for <tag>`.
+- Railway's git-push auto-deploy sees the push to `main`, rebuilds the Astro site, and that build's `fetchRelease()` call (see the landing repo's CLAUDE.md §5) hits the GitHub releases API and bakes the new version / date / DMG size / sha / URL into the static HTML.
+
+End-to-end: `gh release create v0.X.Y` → landing live with new values in ~60s.
+
+**What is *not* automated:** the "What's new in v0.X.Y" bullets and the one-line summary for the release that just moved into the prior-releases table — both live in the landing's `copy.en.ts` / `copy.ka.ts` and need human authorship + translation. Same PR in the landing repo, same day.
+
+**Note:** a previous `release.yml` workflow (which auto-created the GitHub release on tag push) was removed in commit `34f1397`. The DMG build + release publishing now happens locally via `scripts/release/build.sh` + `gh release create` (see §8.2); the landing-redeploy workflow is the only automation that fires from the publish side.
 
 ---
 
