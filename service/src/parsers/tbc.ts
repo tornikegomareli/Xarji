@@ -7,16 +7,16 @@
  *
  * Handles:
  *   ჩარიცხვა:          incoming transfer     → transfer_in   (in)
- *   გAdaRicxVa:        outgoing transfer     → transfer_out  (out)
- *   სESxis dAFARVa:    loan repayment        → loan_repayment (out)
- *   sabarate operacia … uarYofiliA           → payment_failed (out)
- *   uKUGatareba:       card reversal         → reversal       (in)
+ *   გადარიცხვა:        outgoing transfer     → transfer_out  (out)
+ *   სესხის დაფარვა:    loan repayment        → loan_repayment (out)
+ *   საბარათე ოპერაცია … უარყოფილია           → payment_failed (out)
+ *   უკუგატარება:       card reversal         → reversal       (in)
  *   NNN CUR + card line + merchant           → payment        (out)
- *   გადახდა:           bill / utility pay   → transfer_out  (out)
- *   მobIlURIs ShEvSeba: mobile top-up        → transfer_out  (out)
- *   AvtomATUri GAdaRicXVa: scheduled auto   → transfer_out  (out)
- *   naGDI fulis SheTaNa: cash deposit        → deposit        (in)
- *   TaNXIs GaNaGdeba:  ATM cash withdrawal   → atm_withdrawal (out)
+ *   გადახდა:           bill / utility pay    → transfer_out  (out)
+ *   მობილურის შევსება: mobile top-up         → transfer_out  (out)
+ *   ავტომატური გადარიცხვა: scheduled auto    → transfer_out  (out)
+ *   ნაღდი ფულის შეტანა: cash deposit         → deposit        (in)
+ *   თანხის განაღდება:  ATM cash withdrawal   → atm_withdrawal (out)
  *
  * Marketing / OTP / security / investment notifications return null.
  */
@@ -38,58 +38,58 @@ const BANK_KEY = "TBC";
 // საკუთარ ანგარიშზე (own-account transfer) — skip entirely.
 // U+10E1 U+10D0 U+10D9 U+10E3 U+10D7 U+10D0 U+10E0 = საKuTAr
 // U+10D0 U+10DC U+10D2 U+10D0 U+10E0 U+10D8 U+10E8 U+10D4 U+10D1 U+10D6 U+10D4 = ANGaRiShebZe
-const RE_SELF = /\u10E1\u10D0\u10D9\u10E3\u10D7\u10D0\u10E0 \u10D0\u10DC\u10D2\u10D0\u10E0\u10D8\u10E8\u10D4\u10D1\u10D6\u10D4/;
+const RE_SELF = /საკუთარ ანგარიშებზე/;
 
 // ── Incoming transfer (ჩარიცხვა: NNN CUR) ─────────────────────────────────
 // U+10E9 U+10D0 U+10E0 U+10D8 U+10EA U+10EE U+10D5 U+10D0 = ჩARicxVa
-const RE_INCOMING = /\u10E9\u10D0\u10E0\u10D8\u10EA\u10EE\u10D5\u10D0:\s*([\d.,]+)\s*([A-Z]{3})/;
+const RE_INCOMING = /ჩარიცხვა:\s*([\d.,]+)\s*([A-Z]{3})/;
 
-// ── Outgoing transfer (გAdaRicxVa:\nNNN CUR) ──────────────────────────────
-// U+10D2 U+10D0 U+10D3 U+10D0 U+10E0 U+10D8 U+10EA U+10EE U+10D5 U+10D0 = გAdaRicxVa
-const RE_TRANSFER_OUT = /\u10D2\u10D0\u10D3\u10D0\u10E0\u10D8\u10EA\u10EE\u10D5\u10D0:\s*([\d.,]+)\s*([A-Z]{3})/;
+// ── Outgoing transfer (გადარიცხვა:\nNNN CUR) ──────────────────────────────
+// U+10D2 U+10D0 U+10D3 U+10D0 U+10E0 U+10D8 U+10EA U+10EE U+10D5 U+10D0 = გადარიცხვა
+const RE_TRANSFER_OUT = /გადარიცხვა:\s*([\d.,]+)\s*([A-Z]{3})/;
 
 // ── Loan full repayment (სESxis dAFARVa: NNN CUR) ─────────────────────────
 // U+10E1 U+10D4 U+10E1 U+10EE U+10D8 U+10E1 = სESxis
 // U+10D3 U+10D0 U+10E4 U+10D0 U+10E0 U+10D5 U+10D0 = dAFARVa
-const RE_LOAN = /\u10E1\u10D4\u10E1\u10EE\u10D8\u10E1 \u10D3\u10D0\u10E4\u10D0\u10E0\u10D5\u10D0:\s*([\d.,]+)\s*([A-Z]{3})/;
+const RE_LOAN = /სესხის დაფარვა:\s*([\d.,]+)\s*([A-Z]{3})/;
 
 // ── Failed card payment (sabarate operacia NNN CUR uarYofiliA) ────────────
 // U+10E1 U+10D0 U+10D1 U+10D0 U+10E0 U+10D0 U+10D7 U+10D4 = sabarate
 // U+10DD U+10DE U+10D4 U+10E0 U+10D0 U+10EA U+10D8 U+10D0 = operacia
 // U+10E3 U+10D0 U+10E0 U+10E7 U+10DD U+10E4 U+10D8 U+10DA U+10D8 U+10D0 = uarYofiliA
-const RE_FAILED = /\u10E1\u10D0\u10D1\u10D0\u10E0\u10D0\u10D7\u10D4 \u10DD\u10DE\u10D4\u10E0\u10D0\u10EA\u10D8\u10D0\s*([\d.,]+)\s*([A-Z]{3})\s*\u10E3\u10D0\u10E0\u10E7\u10DD\u10E4\u10D8\u10DA\u10D8\u10D0/i;
+const RE_FAILED = /საბარათე ოპერაცია\s*([\d.,]+)\s*([A-Z]{3})\s*უარყოფილია/i;
 
 // ── Card reversal (uKUGatareba:\nNNN CUR\nCARD\nmerchant) ─────────────────
 // U+10E3 U+10D9 U+10E3 U+10D2 U+10D0 U+10E2 U+10D0 U+10E0 U+10D4 U+10D1 U+10D0 = uKUGatareba
-const RE_REVERSAL = /\u10E3\u10D9\u10E3\u10D2\u10D0\u10E2\u10D0\u10E0\u10D4\u10D1\u10D0:/;
+const RE_REVERSAL = /უკუგატარება:/;
 
 // ── Bill / utility payment (გAdaXda:\nNNN CUR\nMERCHANT) ──────────────────
 // U+10D2 U+10D0 U+10D3 U+10D0 U+10EE U+10D3 U+10D0 = გAdaXda (note: ხ ≠ რ in გAdaRicxVa)
-const RE_BILL = /\u10D2\u10D0\u10D3\u10D0\u10EE\u10D3\u10D0:\s*([\d.,]+)\s*([A-Z]{3})/;
+const RE_BILL = /გადახდა:\s*([\d.,]+)\s*([A-Z]{3})/;
 
 // ── Mobile top-up (მobIlURIs ShEvSeba:\nNNN CUR\nMERCHANT) ───────────────
 // U+10DB U+10DD U+10D1 U+10D8 U+10DA U+10E3 U+10E0 U+10D8 U+10E1 = მobIlURIs
 // U+10E8 U+10D4 U+10D5 U+10E1 U+10D4 U+10D1 U+10D0 = ShEvSeba
-const RE_MOBILE = /\u10DB\u10DD\u10D1\u10D8\u10DA\u10E3\u10E0\u10D8\u10E1 \u10E8\u10D4\u10D5\u10E1\u10D4\u10D1\u10D0:\s*([\d.,]+)\s*([A-Z]{3})/;
+const RE_MOBILE = /მობილურის შევსება:\s*([\d.,]+)\s*([A-Z]{3})/;
 
 // ── Scheduled auto-transfer (AvtomATUri GAdaRicXVa\nNNN CUR\nMERCHANT) ───
 // U+10D0 U+10D5 U+10E2 U+10DD U+10DB U+10D0 U+10E2 U+10E3 U+10E0 U+10D8 = AvtomATUri
-const RE_AUTO = /\u10D0\u10D5\u10E2\u10DD\u10DB\u10D0\u10E2\u10E3\u10E0\u10D8 \u10D2\u10D0\u10D3\u10D0\u10E0\u10D8\u10EA\u10EE\u10D5\u10D0\s*([\d.,]+)\s*([A-Z]{3})/;
+const RE_AUTO = /ავტომატური გადარიცხვა\s*([\d.,]+)\s*([A-Z]{3})/;
 
 // ── Cash deposit (naGDI fulis SheTaNa:\nTaNXa: NNN CUR) ───────────────────
 // U+10DC U+10D0 U+10E6 U+10D3 U+10D8 = naGDI
 // U+10E4 U+10E3 U+10DA U+10D8 U+10E1 = fulis
 // U+10E8 U+10D4 U+10E2 U+10D0 U+10DC U+10D0 = SheTaNa
-const RE_DEPOSIT = /\u10DC\u10D0\u10E6\u10D3\u10D8 \u10E4\u10E3\u10DA\u10D8\u10E1 \u10E8\u10D4\u10E2\u10D0\u10DC\u10D0:/;
+const RE_DEPOSIT = /ნაღდი ფულის შეტანა:/;
 
 // ── ATM cash withdrawal (TaNXIs GaNaGdeba:\nDATE\nTaNXa: NNN CUR) ─────────
 // U+10D7 U+10D0 U+10DC U+10EE U+10D8 U+10E1 = TaNXIs
 // U+10D2 U+10D0 U+10DC U+10D0 U+10E6 U+10D3 U+10D4 U+10D1 U+10D0 = GaNaGdeba
-const RE_ATM = /\u10D7\u10D0\u10DC\u10EE\u10D8\u10E1 \u10D2\u10D0\u10DC\u10D0\u10E6\u10D3\u10D4\u10D1\u10D0:/;
+const RE_ATM = /თანხის განაღდება:/;
 
 // ── Amount label used in deposit/ATM/auto (TaNXa: NNN CUR) ────────────────
 // U+10D7 U+10D0 U+10DC U+10EE U+10D0 = TaNXa
-const RE_TANXA = /\u10D7\u10D0\u10DC\u10EE\u10D0:\s*([\d.,]+)\s*([A-Z]{3})/;
+const RE_TANXA = /თანხა:\s*([\d.,]+)\s*([A-Z]{3})/;
 
 // ── Generic card-payment amount: bare "NNN.NN CUR" line ───────────────────
 // Optional leading ")" covers TBC municipal transport taps.
@@ -101,18 +101,18 @@ const RE_CARD_STARS  = /\*{3,}(\d{3,4})/;
 
 // ── Balance (ნAshTi: NNN CUR) ──────────────────────────────────────────────
 // U+10DC U+10D0 U+10E8 U+10D7 U+10D8 = ნAshTi
-const RE_BALANCE = /\u10DC\u10D0\u10E8\u10D7\u10D8:\s*([\d.,]+)\s*([A-Z]{3})/;
+const RE_BALANCE = /ნაშთი:\s*([\d.,]+)\s*([A-Z]{3})/;
 
 // ── Failure reason (მiZeZi: text) ─────────────────────────────────────────
 // U+10DB U+10D8 U+10D6 U+10D4 U+10D6 U+10D8 = მiZeZi
-const RE_REASON = /\u10DB\u10D8\u10D6\u10D4\u10D6\u10D8:\s*(.+)/i;
+const RE_REASON = /მიზეზი:\s*(.+)/i;
 
 // ── Loan source account (ANGaRiShIdaN: accountName) ────────────────────────
 // U+10D0 U+10DC U+10D2 U+10D0 U+10E0 U+10D8 U+10E8 U+10D8 U+10D3 U+10D0 U+10DC = ANGaRiShIdaN
-const RE_SOURCE_ACCOUNT = /\u10D0\u10DC\u10D2\u10D0\u10E0\u10D8\u10E8\u10D8\u10D3\u10D0\u10DC:\s*(.+?)(?:\s*$)/im;
+const RE_SOURCE_ACCOUNT = /ანგარიშიდან:\s*(.+?)(?:\s*$)/im;
 
 // ── Loan remaining balance (სESxis ნAshTi: NNN CUR) ───────────────────────
-const RE_LOAN_REMAINING = /\u10E1\u10D4\u10E1\u10EE\u10D8\u10E1 \u10DC\u10D0\u10E8\u10D7\u10D8:\s*([\d.,]+)\s*([A-Z]{3})/;
+const RE_LOAN_REMAINING = /სესხის ნაშთი:\s*([\d.,]+)\s*([A-Z]{3})/;
 
 // ── Account hint lines that are NOT counterparty names ────────────────────
 const RE_ACCOUNT_HINT = /^\s*(Current|Space Card|Expired deposits account|VISA GOLD|[A-Z][A-Za-z ]+ account)\s*$/;
