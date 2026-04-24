@@ -37,7 +37,8 @@ describe("parseMessage router", () => {
   });
 
   test("TBC SMS message routed through TBC parser", () => {
-    const tx = parseMessage(mk("TBC SMS", "Charicxva: 1.00 GEL\nCurrent\n01/01/2026"))!;
+    // \u10E9\u10D0\u10E0\u10D8\u10EA\u10EE\u10D5\u10D0 = ჩარიცხვა (incoming transfer)
+    const tx = parseMessage(mk("TBC SMS", "\u10E9\u10D0\u10E0\u10D8\u10EA\u10EE\u10D5\u10D0: 1.00 GEL\nCurrent\n01/01/2026"))!;
     expect(tx.bankKey).toBe("TBC");
     expect(tx.transactionType).toBe("transfer_in");
   });
@@ -55,7 +56,7 @@ describe("parseMessages bulk", () => {
   const raws: RawMessage[] = [
     mk("SOLO", ["გადახდა: GEL5.00", "Card:***1111", "Shop1", "01.01.2026"].join("\n"), 1),
     mk("SOLO", "random noise", 2),
-    mk("TBC SMS", "Charicxva: 10.00 GEL\nCurrent\n01/01/2026", 3),
+    mk("TBC SMS", "\u10E9\u10D0\u10E0\u10D8\u10EA\u10EE\u10D5\u10D0: 10.00 GEL\nCurrent\n01/01/2026", 3),
     mk("RANDOM", "anything", 4),
   ];
   const result = parseMessages(raws);

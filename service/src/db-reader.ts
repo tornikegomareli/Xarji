@@ -209,7 +209,7 @@ export class MessagesDbReader {
   getMessagesSince(
     senderId: string,
     sinceMessageId: number,
-    limit: number = 1000
+    limit: number = 10000
   ): RawMessage[] {
     const query = `
       SELECT
