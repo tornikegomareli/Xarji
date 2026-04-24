@@ -21,6 +21,14 @@ import { CLIENT_ASSETS } from "./generated/client-assets";
 import { serializeSchema, type FieldMap } from "./setup/schema";
 import { applySetup } from "./setup/apply";
 import { previewSenders } from "./setup/preview";
+import { getRateSheet } from "./exchange-rate/exchange-service";
+import {
+  NbgDateNotFoundError,
+  NbgFutureDateError,
+  NbgInvalidLanguageError,
+  NbgRequestFailedError,
+  type NbgLanguage,
+} from "./exchange-rate/nbg-client";
 
 export interface HttpServerOptions {
   port: number;
@@ -304,6 +312,64 @@ export function startHttpServer(opts: HttpServerOptions): HttpServerHandle {
           );
         }
         return json(result);
+      }
+      if (path === "/api/exchange-rate" && req.method === "GET") {
+        const dateParam = url.searchParams.get("date");
+        const langParam = url.searchParams.get("lang");
+        const codesParam = url.searchParams.get("codes");
+
+        if (dateParam !== null && !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+          return json({ error: "`date` must be YYYY-MM-DD" }, { status: 400 });
+        }
+        let language: NbgLanguage = "en";
+        if (langParam !== null) {
+          if (langParam !== "ka" && langParam !== "en" && langParam !== "ru") {
+            return json({ error: "`lang` must be ka, en, or ru" }, { status: 400 });
+          }
+          language = langParam;
+        }
+        const filterCodes = codesParam
+          ? codesParam.split(",").map((c) => c.trim().toUpperCase()).filter(Boolean)
+          : null;
+
+        try {
+          const sheet = await getRateSheet({
+            date: dateParam ?? undefined,
+            language,
+          });
+          const ratesObj: Record<string, { rate: number; diff: number; change: number; name: string; validFrom: string }> = {};
+          for (const [code, r] of sheet.rates) {
+            if (filterCodes && !filterCodes.includes(code)) continue;
+            ratesObj[code] = {
+              rate: r.rate,
+              diff: r.diff,
+              change: r.change,
+              name: r.name,
+              validFrom: r.validFrom,
+            };
+          }
+          return json({
+            ok: true,
+            base: "GEL",
+            date: sheet.date,
+            language: sheet.language,
+            rates: ratesObj,
+          });
+        } catch (err) {
+          if (err instanceof NbgFutureDateError) {
+            return json({ ok: false, error: err.message, errorKind: "future-date" }, { status: 400 });
+          }
+          if (err instanceof NbgDateNotFoundError) {
+            return json({ ok: false, error: err.message, errorKind: "no-rates" }, { status: 404 });
+          }
+          if (err instanceof NbgInvalidLanguageError) {
+            return json({ ok: false, error: err.message, errorKind: "bad-language" }, { status: 400 });
+          }
+          if (err instanceof NbgRequestFailedError) {
+            return json({ ok: false, error: err.message, errorKind: "upstream" }, { status: 502 });
+          }
+          return json({ ok: false, error: String(err), errorKind: "internal" }, { status: 500 });
+        }
       }
       if (path.startsWith("/api/")) {
         return json({ error: "unknown endpoint" }, { status: 404 });
