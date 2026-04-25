@@ -8,6 +8,7 @@ interface SidebarItem {
   name: string;
   glyph: string;
   badge?: string;
+  pillBadge?: string;
 }
 
 export function Sidebar({
@@ -27,6 +28,7 @@ export function Sidebar({
     { to: "/income", name: "Income", glyph: "↓", badge: incomeCount ? incomeCount.toLocaleString("en-US") : undefined },
     { to: "/categories", name: "Categories", glyph: "◐" },
     { to: "/merchants", name: "Merchants", glyph: "◆" },
+    { to: "/assistant", name: "Assistant", glyph: "✧", pillBadge: "NEW" },
     { to: "/signals", name: "Signals", glyph: "✦", badge: signalsCount ? String(signalsCount) : undefined },
     { to: "/manage", name: "Manage", glyph: "⚙" },
   ];
@@ -75,6 +77,22 @@ export function Sidebar({
               <>
                 <span style={{ fontFamily: T.mono, fontSize: 12, opacity: 0.85 }}>{it.glyph}</span>
                 <span style={{ flex: 1 }}>{it.name}</span>
+                {it.pillBadge && (
+                  <span
+                    style={{
+                      fontFamily: T.sans,
+                      fontSize: 9,
+                      fontWeight: 800,
+                      letterSpacing: 0.5,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background: isActive ? "rgba(12,12,14,0.12)" : T.accent,
+                      color: isActive ? T.bg : "#fff",
+                    }}
+                  >
+                    {it.pillBadge}
+                  </span>
+                )}
                 {it.badge && (
                   <span
                     style={{

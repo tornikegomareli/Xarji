@@ -5,6 +5,7 @@ import { useBankSenders } from "../hooks/useBankSenders";
 import { useDeleteAllData } from "../hooks/useDeleteAllData";
 import { usePayments, useFailedPayments } from "../hooks/useTransactions";
 import { useCredits } from "../hooks/useCredits";
+import { SettingsAISection } from "../components/SettingsAISection";
 
 export function Settings() {
   const T = useTheme();
@@ -76,6 +77,8 @@ export function Settings() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap, height: "100%", overflowY: "auto" }}>
       <PageHeader eyebrow="Settings · preferences · data" title="Manage" ranges={null} />
+
+      <SettingsAISection />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: T.density.gap }}>
         <Section

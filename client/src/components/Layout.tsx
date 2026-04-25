@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "../ink/Sidebar";
 import { TweaksPanel } from "../ink/TweaksPanel";
+import { SpotlightHost } from "./Spotlight";
 import {
   ThemeContext,
   TweaksContext,
@@ -117,6 +118,7 @@ function ConfiguredShell() {
         </main>
       </div>
       <TweaksPanel />
+      <SpotlightHost />
     </>
   );
 }

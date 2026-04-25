@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "./components/Layout";
-import { Dashboard, Transactions, Categories, Merchants, Income, Signals, Settings } from "./pages";
+import { Dashboard, Transactions, Categories, Merchants, Income, Signals, Settings, Assistant } from "./pages";
 
 function App() {
   return (
@@ -12,6 +12,7 @@ function App() {
           <Route path="income" element={<Income />} />
           <Route path="categories" element={<Categories />} />
           <Route path="merchants" element={<Merchants />} />
+          <Route path="assistant" element={<Assistant />} />
           <Route path="signals" element={<Signals />} />
           <Route path="manage" element={<Settings />} />
           {/* Compatibility redirects for the routes that existed in the

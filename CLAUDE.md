@@ -627,7 +627,58 @@ Used once during project bootstrap (`app-menubar/` creation) to scaffold the Swi
 
 ---
 
-## 12. Future work (explicitly deferred)
+## 12. AI Assistant — provider clients, tools, and the system prompt
+
+The Assistant feature lives under `client/src/lib/ai/` and `client/src/components/Assistant*.tsx`. Two providers (Anthropic + OpenAI), one orchestrator, one tool registry, one system prompt. Adding a new provider is one file under `lib/ai/providers/`; adding a new tool is one entry in a registry. The system prompt **auto-includes the registered tool list** — never edit it by hand.
+
+### Layout
+
+```
+client/src/lib/ai/
+├── types.ts                  ← shared protocol (AIStreamEvent, AIToolDefinition, AIProviderClient)
+├── provider.ts               ← dynamic-import factory; SDKs only land in the bundle when picked
+├── providers/
+│   ├── anthropic.ts          ← claude.messages.stream(), adaptive thinking
+│   └── openai.ts             ← chat.completions.create({ stream: true })
+├── tools/
+│   ├── types.ts              ← AITool + AIToolContext
+│   └── readonly.ts           ← read-only tools registry (`READONLY_TOOLS`)
+└── orchestrator.ts           ← provider→tool→provider loop, capped at 8 iterations
+
+client/src/hooks/useAgentRunner.ts
+   ↑ Bridges live React data into AIToolContext, owns the system prompt,
+     composes registries into the ALL_TOOLS list passed to the orchestrator.
+```
+
+### The "tools must appear in the system prompt" rule
+
+The system prompt at `useAgentRunner.ts` is built by `buildSystemPrompt(tools)` which appends an **Available tools:** section generated from each tool's `definition.name` + `definition.description`. The model sees the same source-of-truth list of tools that the orchestrator dispatches against — no hand-maintained duplicate to drift.
+
+**When you add a tool:** register it in the relevant tools file (e.g. push it onto `READONLY_TOOLS` in `lib/ai/tools/readonly.ts`). The prompt updates automatically on the next user prompt.
+
+**When you add a NEW tool registry** (e.g. `WRITE_TOOLS`, `GUIDED_TOOLS`, `EXPERIMENTAL_TOOLS`): export the array, then concatenate it into `ALL_TOOLS` in `useAgentRunner.ts`. Both effects (callable + listed in prompt) happen at once.
+
+### The "use the latest models" rule
+
+The provider model lists in `client/src/lib/aiConfig.ts` are user-facing — the picker in the Assistant onboarding + the Settings AI section read from this file. When a new Anthropic or OpenAI model ships, update `models` and `defaultModel` here. The `claude-api` skill (auto-loaded for Claude work) carries the current Anthropic catalog and migration guidance — defer to it for Claude model IDs and breaking-change notes (sampling params, `budget_tokens` removal, etc.).
+
+### Read-only-only
+
+Every tool today is read-only — purely a function over the live `AIToolContext` (payments, credits, categories, etc.). Write tools (create category, set budget, delete transaction) are deliberately deferred until we design a consent UX around them. If you add one, it must:
+
+1. Render a preview block (`CategoryCard` / `BudgetCard` / etc.) showing the proposed change.
+2. Wait for explicit user confirmation in the chat before committing.
+3. Only then call `db.transact(...)` against InstantDB.
+
+The orchestrator's `toBlock` hook on `AITool` is the seam for the preview step — the structured cards already exist in `AssistantChat.tsx`.
+
+### Where keys live
+
+The Anthropic / OpenAI API key is in `localStorage['xarji-ai']`, written by the onboarding form in `AssistantOnboarding.tsx`. Both SDK clients are constructed in the browser with `dangerouslyAllowBrowser: true` — acceptable here because Xarji is a single-user local-first app with no third-party scripts on the page (no XSS surface beyond what the user explicitly types). The matching UI copy ("keys never leave this Mac") is true: keys never reach `xarji-core` or any service Xarji owns; they go straight from the browser to `api.anthropic.com` / `api.openai.com`.
+
+---
+
+## 13. Future work (explicitly deferred)
 
 Things we considered and decided to skip for now. Re-evaluate when there's a concrete need, not before:
 
@@ -640,7 +691,7 @@ Things we considered and decided to skip for now. Re-evaluate when there's a con
 
 ---
 
-## 13. Quick reference
+## 14. Quick reference
 
 ```
 Dev:
