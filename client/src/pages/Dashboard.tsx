@@ -1,15 +1,15 @@
 import { useMemo, useState } from "react";
-import { useTheme, useViewport } from "../ink/theme";
+import { useTheme, useViewport, type InkTheme } from "../ink/theme";
 import { Card, CardLabel, CardTitle, Pill, LiveDot, LinkBtn, PageHeader } from "../ink/primitives";
-import { AreaChart, Donut, Sparkline } from "../ink/charts";
+import { AreaChart, Donut } from "../ink/charts";
 import { TxRow, type InkTx } from "../ink/TxRow";
 import { useConvertedPayments, useFailedPayments } from "../hooks/useTransactions";
-import { useMonthStats, useMonthSpendingByDay, useMonthTopMerchants } from "../hooks/useMonthlyAnalytics";
+import { useMonthStats, useMonthTopMerchants } from "../hooks/useMonthlyAnalytics";
 import { useMonthlyTrend } from "../hooks/useMonthlyTrend";
 import { useCredits, useMonthCredits } from "../hooks/useCredits";
 import { formatCompact } from "../ink/format";
 import { getCategory, DEFAULT_CATEGORIES } from "../lib/utils";
-import { isWithinInterval, startOfMonth, endOfMonth, format } from "date-fns";
+import { isWithinInterval, startOfMonth, endOfMonth, subMonths, format } from "date-fns";
 
 export function Dashboard() {
   const T = useTheme();
@@ -17,16 +17,31 @@ export function Dashboard() {
   const now = new Date();
   const my = { month: now.getMonth(), year: now.getFullYear() };
 
+  const prevDate = subMonths(now, 1);
+  const prevMy = { month: prevDate.getMonth(), year: prevDate.getFullYear() };
+
   const stats = useMonthStats(my);
-  const daily = useMonthSpendingByDay(my);
   const topMerchants = useMonthTopMerchants(my, 5);
   const trend = useMonthlyTrend(9);
   const { payments } = useConvertedPayments();
   const { failedPayments } = useFailedPayments();
   const { credits } = useCredits();
   const monthCredits = useMonthCredits(my);
+  const prevMonthCredits = useMonthCredits(prevMy);
 
   const [range, setRange] = useState("Month");
+
+  const prevMonthName = format(prevDate, "MMMM");
+  const prevMonthShort = format(prevDate, "MMM");
+  const monthYearLabel = format(now, "MMMM yyyy");
+  const monthShortName = format(now, "MMM").toUpperCase();
+  const income = monthCredits.total;
+  const net = income - stats.total;
+  const savingsRate = income > 0 ? (net / income) * 100 : 0;
+  const incomeChange =
+    prevMonthCredits.total > 0
+      ? ((income - prevMonthCredits.total) / prevMonthCredits.total) * 100
+      : null;
 
   const trendData = useMemo(
     () => trend.map((m) => ({ label: m.label.slice(0, 3), value: m.total })),
@@ -101,19 +116,11 @@ export function Dashboard() {
     return combined.sort((a, b) => b.transactionDate - a.transactionDate).slice(0, 7);
   }, [payments, failedPayments, credits]);
 
-  const dailyValues = daily.map((d) => d.amount);
   const positive = stats.totalChange > 0;
   const dayNum = now.getDate();
   const hour = now.getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const monthTitle = format(now, "MMMM, 'at a glance'");
-  const lowDay = Math.min(...dailyValues.filter((v) => v > 0), Infinity);
-  const highDay = Math.max(...dailyValues, 0);
-  const median = (() => {
-    const sorted = [...dailyValues].filter((v) => v > 0).sort((a, b) => a - b);
-    if (sorted.length === 0) return 0;
-    return sorted[Math.floor(sorted.length / 2)];
-  })();
 
   const monthShort = Math.round(stats.total).toLocaleString("en-US");
   const monthDecimals = stats.total.toFixed(2).split(".")[1];
@@ -135,57 +142,92 @@ export function Dashboard() {
           gap: T.density.gap,
         }}
       >
-        <Card pad="30px 32px" glow>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <CardLabel>Spent this month · GEL</CardLabel>
+        <Card pad="28px 32px" glow>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  background: T.accentSoft,
+                  color: T.accent,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  fontFamily: T.sans,
+                }}
+              >
+                ↓
+              </span>
+              <div
+                style={{
+                  fontSize: 10.5,
+                  color: T.muted,
+                  fontFamily: T.mono,
+                  fontWeight: 700,
+                  letterSpacing: 1.2,
+                  textTransform: "uppercase",
+                }}
+              >
+                Outgoing · {monthYearLabel}
+              </div>
+            </div>
             {stats.prevTotal > 0 && (
-              <Pill bg={T.accent} color="#fff">
-                {positive ? "↑" : "↓"} {Math.abs(stats.totalChange).toFixed(1)}%
+              <Pill bg={positive ? T.accentSoft : "rgba(75,217,162,0.15)"} color={positive ? T.accent : T.green}>
+                {positive ? "↑" : "↓"} {Math.abs(stats.totalChange).toFixed(1)}% vs {prevMonthShort}
               </Pill>
             )}
           </div>
           <div
             style={{
-              marginTop: 12,
-              fontSize: "clamp(52px, 8.2vw, 84px)",
-              fontWeight: 700,
-              letterSpacing: -4,
-              lineHeight: 1,
-              color: T.text,
-              fontFamily: T.sans,
-              whiteSpace: "nowrap",
+              marginTop: 18,
+              display: "flex",
+              alignItems: "baseline",
+              gap: 14,
+              flexWrap: "wrap",
             }}
           >
-            <span style={{ color: T.accent, opacity: 0.9 }}>₾</span>
-            {monthShort}
-            <span style={{ fontSize: "0.43em", color: T.muted }}>.{monthDecimals}</span>
-          </div>
-          <div style={{ fontSize: 13, color: T.muted, marginTop: 4, fontFamily: T.sans }}>
-            {stats.prevTotal > 0 ? `${positive ? "+" : "−"}₾${momDeltaRound.toLocaleString("en-US")} vs last month · ` : ""}
-            {dayNum} days · {stats.count} transactions
-          </div>
-          {monthCredits.total > 0 && (
             <div
               style={{
-                fontSize: 13,
-                marginTop: 12,
+                fontSize: "clamp(12px, 1vw, 13px)",
+                color: T.muted,
                 fontFamily: T.sans,
-                display: "flex",
-                gap: 16,
-                alignItems: "baseline",
-                flexWrap: "wrap",
+                fontWeight: 600,
+                letterSpacing: 0.3,
+                textTransform: "uppercase",
+                alignSelf: "flex-start",
+                marginTop: 10,
               }}
             >
-              <span style={{ color: T.green, fontWeight: 700 }}>
-                + ₾{Math.round(monthCredits.total).toLocaleString("en-US")}
-              </span>
-              <span style={{ color: T.muted }}>earned this month</span>
-              <span style={{ color: T.dim, fontFamily: T.mono, fontSize: 11 }}>
-                net {monthCredits.total - stats.total >= 0 ? "+" : "−"}₾
-                {Math.abs(Math.round(monthCredits.total - stats.total)).toLocaleString("en-US")}
-              </span>
+              You spent
             </div>
-          )}
+            <div
+              style={{
+                fontSize: "clamp(48px, 7.6vw, 78px)",
+                fontWeight: 700,
+                letterSpacing: -3.8,
+                lineHeight: 1,
+                color: T.text,
+                fontFamily: T.sans,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span style={{ color: T.accent, opacity: 0.9 }}>−₾</span>
+              {monthShort}
+              <span style={{ fontSize: "0.42em", color: T.muted }}>.{monthDecimals}</span>
+            </div>
+          </div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 6, fontFamily: T.sans }}>
+            {stats.prevTotal > 0
+              ? `${positive ? "+" : "−"}₾${momDeltaRound.toLocaleString("en-US")} ${positive ? "more" : "less"} than ${prevMonthName} · `
+              : ""}
+            {dayNum} days · {stats.count} transactions
+          </div>
+
+          <CashflowBar T={T} income={income} spent={stats.total} />
           {T.chartsVisible && trendData.length > 0 && (
             <div style={{ marginTop: 22 }}>
               <AreaChart
@@ -226,45 +268,23 @@ export function Dashboard() {
             gap: T.density.gap,
           }}
         >
-          <Card accent pad="22px 26px" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-              <div style={{ fontSize: 12, color: T.accent, fontWeight: 700, fontFamily: T.sans, whiteSpace: "nowrap" }}>Daily avg</div>
-              <Pill>{dayNum}d</Pill>
-            </div>
-            <div>
-              <div style={{ fontSize: vp.narrow ? 32 : 40, fontWeight: 800, letterSpacing: -1.8, lineHeight: 1, color: T.text, fontFamily: T.sans }}>
-                ₾{Math.round(stats.total / Math.max(1, dayNum))}
-              </div>
-              <div style={{ fontSize: 11, color: T.muted, marginTop: 4, fontFamily: T.sans }}>
-                low ₾{Number.isFinite(lowDay) ? Math.round(lowDay) : 0} · high ₾{Math.round(highDay)} · median ₾{Math.round(median)}
-              </div>
-            </div>
-            {T.chartsVisible && dailyValues.length > 0 && (
-              <div style={{ marginTop: 8 }}>
-                <Sparkline values={dailyValues} width={280} height={28} stroke={T.accent} strokeWidth={1.5} />
-              </div>
-            )}
-          </Card>
+          <IncomeCard
+            T={T}
+            vpNarrow={vp.narrow}
+            income={income}
+            credits={monthCredits.credits}
+            incomeChange={incomeChange}
+            prevMonthShort={prevMonthShort}
+          />
 
-          <Card pad="22px 26px" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-              <CardLabel>Declined</CardLabel>
-              {stats.failedCount > 0 && <Pill>Watch</Pill>}
-            </div>
-            <div>
-              <div style={{ fontSize: vp.narrow ? 32 : 40, fontWeight: 800, letterSpacing: -1.8, lineHeight: 1, color: T.text, fontFamily: T.sans }}>
-                {stats.failedCount}
-              </div>
-              <div style={{ fontSize: 11, color: T.muted, marginTop: 4, fontFamily: T.sans }}>
-                {stats.failedCount === 0 ? "No declined payments this month" : "Failed payments this month"}
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 4 }}>
-              {Array.from({ length: Math.min(8, stats.failedCount) }).map((_, i) => (
-                <span key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: T.accent, opacity: 0.4 + (i % 3) * 0.2 }} />
-              ))}
-            </div>
-          </Card>
+          <NetCashflowCard
+            T={T}
+            vpNarrow={vp.narrow}
+            net={net}
+            income={income}
+            savingsRate={savingsRate}
+            monthShortName={monthShortName}
+          />
         </div>
       </div>
 
@@ -409,5 +429,356 @@ export function Dashboard() {
         )}
       </Card>
     </div>
+  );
+}
+
+// Horizontal cashflow bar: visualises income → spent → net under the
+// hero number so "you spent" can't be mistaken for a balance.
+function CashflowBar({ T, income, spent }: { T: InkTheme; income: number; spent: number }) {
+  const net = Math.max(0, income - spent);
+  const scale = Math.max(income, spent, 1);
+  const spentPct = (spent / scale) * 100;
+  const netPct = (net / scale) * 100;
+  const overspent = income > 0 && spent > income;
+
+  return (
+    <div
+      style={{
+        marginTop: 22,
+        padding: "16px 18px",
+        background: T.panelAlt,
+        border: `1px solid ${T.line}`,
+        borderRadius: T.rMd,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <CashflowLegend T={T} dot={T.accent} label="Spent" value={"₾" + Math.round(spent).toLocaleString("en-US")} />
+          <CashflowLegend
+            T={T}
+            dot={T.green}
+            label="Net"
+            value={(net >= 0 ? "+₾" : "−₾") + Math.abs(Math.round(net)).toLocaleString("en-US")}
+            muted={income === 0}
+          />
+        </div>
+        <div
+          style={{
+            fontSize: 10.5,
+            color: T.dim,
+            fontFamily: T.mono,
+            letterSpacing: 0.6,
+            textTransform: "uppercase",
+          }}
+        >
+          {income > 0 ? `of ₾${Math.round(income).toLocaleString("en-US")} income` : "no income recorded"}
+        </div>
+      </div>
+
+      <div
+        style={{
+          position: "relative",
+          height: 12,
+          borderRadius: 6,
+          background: T.panel,
+          border: `1px solid ${T.line}`,
+          overflow: "hidden",
+          display: "flex",
+        }}
+      >
+        <div
+          style={{
+            width: `${spentPct}%`,
+            background: `linear-gradient(90deg, ${T.accent}, ${T.accent}cc)`,
+            transition: "width .6s cubic-bezier(0.2, 0.8, 0.2, 1)",
+          }}
+        />
+        <div
+          style={{
+            width: `${netPct}%`,
+            background: `repeating-linear-gradient(45deg, ${T.green}55 0 6px, ${T.green}22 6px 12px)`,
+            transition: "width .6s cubic-bezier(0.2, 0.8, 0.2, 1)",
+          }}
+        />
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginTop: 8,
+          fontSize: 10,
+          color: T.dim,
+          fontFamily: T.mono,
+        }}
+      >
+        <span>₾0</span>
+        <span style={{ color: overspent ? T.accent : T.muted }}>
+          {overspent
+            ? `⚠ Over income by ₾${Math.abs(Math.round(income - spent)).toLocaleString("en-US")}`
+            : income > 0
+              ? `${Math.round((spent / income) * 100)}% of income used`
+              : "spending only"}
+        </span>
+        <span>₾{Math.round(Math.max(income, spent)).toLocaleString("en-US")}</span>
+      </div>
+    </div>
+  );
+}
+
+function CashflowLegend({
+  T,
+  dot,
+  label,
+  value,
+  muted,
+}: {
+  T: InkTheme;
+  dot: string;
+  label: string;
+  value: string;
+  muted?: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span style={{ width: 8, height: 8, borderRadius: 4, background: dot }} />
+      <div
+        style={{
+          fontSize: 10.5,
+          color: T.dim,
+          fontFamily: T.mono,
+          letterSpacing: 0.6,
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 700,
+          color: muted ? T.muted : T.text,
+          fontFamily: T.sans,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+interface CreditRow {
+  id: string;
+  amount: number;
+  currency: string;
+  counterparty?: string;
+  transactionDate: number;
+  gelAmount: number | null;
+}
+
+function IncomeCard({
+  T,
+  vpNarrow,
+  income,
+  credits,
+  incomeChange,
+  prevMonthShort,
+}: {
+  T: InkTheme;
+  vpNarrow: boolean;
+  income: number;
+  credits: CreditRow[];
+  incomeChange: number | null;
+  prevMonthShort: string;
+}) {
+  // Show up to 5 most-recent deposits in the timeline (oldest → newest in
+  // the design; we keep that order so the vertical green-bar opacity ramp
+  // reads as "history fills toward today").
+  const timeline = [...credits]
+    .sort((a, b) => a.transactionDate - b.transactionDate)
+    .slice(-5);
+
+  return (
+    <Card
+      pad="18px 22px"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        borderColor: "rgba(75,217,162,0.25)",
+        background: `linear-gradient(180deg, rgba(75,217,162,0.06), ${T.panel})`,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              width: 20,
+              height: 20,
+              borderRadius: 10,
+              background: "rgba(75,217,162,0.15)",
+              color: T.green,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 11,
+              fontWeight: 800,
+              fontFamily: T.sans,
+            }}
+          >
+            ↑
+          </span>
+          <div style={{ fontSize: 12, color: T.green, fontWeight: 700, fontFamily: T.sans }}>Income</div>
+        </div>
+        {incomeChange !== null && (
+          <Pill bg="rgba(75,217,162,0.12)" color={T.green}>
+            {incomeChange >= 0 ? "+" : "−"}
+            {Math.abs(incomeChange).toFixed(0)}% vs {prevMonthShort}
+          </Pill>
+        )}
+      </div>
+
+      <div
+        style={{
+          fontSize: vpNarrow ? 26 : 32,
+          fontWeight: 800,
+          letterSpacing: -1.2,
+          lineHeight: 1,
+          color: T.text,
+          fontFamily: T.sans,
+          whiteSpace: "nowrap",
+        }}
+      >
+        <span style={{ color: T.green, opacity: 0.9 }}>+₾</span>
+        {Math.round(income).toLocaleString("en-US")}
+      </div>
+
+      {timeline.length === 0 ? (
+        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
+          No incoming transactions this month yet.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 2 }}>
+          {timeline.map((c, i) => (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: T.sans }}>
+              <span
+                style={{
+                  width: 3,
+                  height: 14,
+                  borderRadius: 2,
+                  background: T.green,
+                  opacity: 0.5 + (i / Math.max(1, timeline.length - 1)) * 0.45,
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 10,
+                  color: T.dim,
+                  fontFamily: T.mono,
+                  minWidth: 46,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {new Date(c.transactionDate)
+                  .toLocaleString("en-US", { month: "short", day: "numeric" })
+                  .toUpperCase()}
+              </span>
+              <span
+                style={{
+                  flex: 1,
+                  fontSize: 11,
+                  color: T.text,
+                  fontWeight: 500,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {c.counterparty || "Income"}
+              </span>
+              <span
+                style={{
+                  fontSize: 11,
+                  color: T.text,
+                  fontWeight: 700,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                ₾{Math.round(c.gelAmount ?? c.amount).toLocaleString("en-US")}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function NetCashflowCard({
+  T,
+  vpNarrow,
+  net,
+  income,
+  savingsRate,
+  monthShortName,
+}: {
+  T: InkTheme;
+  vpNarrow: boolean;
+  net: number;
+  income: number;
+  savingsRate: number;
+  monthShortName: string;
+}) {
+  const positiveNet = net >= 0;
+  return (
+    <Card pad="18px 22px" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <span style={{ whiteSpace: "nowrap" }}>
+          <CardLabel>Net cashflow · {monthShortName}</CardLabel>
+        </span>
+        {income > 0 && (
+          <Pill
+            bg={positiveNet ? "rgba(75,217,162,0.12)" : T.accentSoft}
+            color={positiveNet ? T.green : T.accent}
+          >
+            {savingsRate >= 0 ? "+" : ""}
+            {savingsRate.toFixed(0)}% saved
+          </Pill>
+        )}
+      </div>
+
+      <div
+        style={{
+          fontSize: vpNarrow ? 32 : 40,
+          fontWeight: 800,
+          letterSpacing: -1.6,
+          lineHeight: 1,
+          color: T.text,
+          fontFamily: T.sans,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {positiveNet ? "+₾" : "−₾"}
+        {Math.abs(Math.round(net)).toLocaleString("en-US")}
+      </div>
+
+      <div style={{ fontSize: 12, color: T.muted, fontFamily: T.sans, lineHeight: 1.5 }}>
+        {income === 0
+          ? "No income recorded this month."
+          : positiveNet
+            ? "Unspent income this month."
+            : "Spending exceeded income this month."}
+      </div>
+    </Card>
   );
 }
