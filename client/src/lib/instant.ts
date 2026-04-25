@@ -1,4 +1,5 @@
 import { init, i } from "@instantdb/react";
+import { isDemoMode, getDemoSeed } from "../dev/demoMode";
 
 // Define the schema
 const schema = i.schema({
@@ -98,9 +99,22 @@ async function resolveAppId(): Promise<string> {
   return import.meta.env.VITE_INSTANT_APP_ID || "f78a0d50-1945-431a-91ea-96f68570d4a5";
 }
 
-const APP_ID = await resolveAppId();
+type Db = ReturnType<typeof init<typeof schema>>;
 
-export const db = init({ appId: APP_ID, schema });
+// Dev-only demo mode: when active, swap the live InstantDB client for a
+// mutable in-memory fake (see ../dev/demoDb). The static `import.meta.env.DEV`
+// literal short-circuits in production builds, so Vite/Rollup tree-shake
+// the dynamic import + the dev module + the fixtures out of the bundle.
+let _db: Db;
+if (import.meta.env.DEV && isDemoMode()) {
+  const { makeDemoDb } = await import("../dev/demoDb");
+  _db = makeDemoDb(getDemoSeed()) as unknown as Db;
+} else {
+  const APP_ID = await resolveAppId();
+  _db = init({ appId: APP_ID, schema });
+}
+
+export const db: Db = _db;
 
 // Export types for use in components (using undefined for optional fields to match InstantDB)
 export type Payment = {
