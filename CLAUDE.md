@@ -378,17 +378,19 @@ For testing an end-user-facing change (icon, onboarding, signed binary behaviour
 
 The dashboard has no automated UI test suite. Instead, every page has a markdown checklist in `docs/e2e/<page>.md` that an agent walks through in a real Chrome tab via the chrome-MCP. Each test has a stable ID (`T-<AREA>-<NN>`) that PR descriptions and Codex findings can reference.
 
-**Cadence:**
+**Always ask before running.** E2E sweeps spin up dev servers, take over the user's Chrome tab, and burn meaningful tokens through screenshots and DOM reads. Before kicking one off — even after the user explicitly asks for "the tests" — confirm scope ("Want me to run the full sweep, or just `dashboard.md`?") AND get an explicit go-ahead. Don't pre-emptively run E2E because a PR is "ready" or because Codex returned findings; surface the recommendation, wait for the user.
 
-- **Pre-merge to `main`:** run *every* file in `docs/e2e/` top to bottom. The "we broke literally nothing" pass.
-- **PR for a focused feature/fix:** run only the file(s) for the surface(s) the PR touches. A change to `Dashboard.tsx` runs `dashboard.md`; a change to `useRangeState.ts` runs `ranges.md` plus every page file (since the range buttons live in every page header); a change limited to a parser only runs scoped tests if any.
-- **After a Codex review surfaces no-ship findings:** re-run the affected file once the fix is pushed.
+**Cadence (recommend, then ask):**
+
+- **Pre-merge to `main`:** recommend running *every* file in `docs/e2e/` top to bottom. The "we broke literally nothing" pass.
+- **PR for a focused feature/fix:** recommend only the file(s) for the surface(s) the PR touches. A change to `Dashboard.tsx` runs `dashboard.md`; a change to `useRangeState.ts` runs `ranges.md` plus every page file (since the range buttons live in every page header); a change limited to a parser doesn't need E2E at all.
+- **After a Codex review surfaces no-ship findings:** recommend re-running the affected file once the fix is pushed.
+
+**Demo mode is mandatory.** Every test file assumes `?demo=1` is active — without it, multi-segment donut, signal triggers, and multi-counterparty Income can't be exercised. Confirm demo mode before walking any test (sidebar shows ~1,200+ transactions, dashboard donut shows ≥5 segments). The dataset reference lives in `docs/e2e/README.md`.
 
 **Where the docs live:** `docs/e2e/README.md` is the index, with a table mapping each file to the source surface it covers and the last verification date. Per-page files: `dashboard.md`, `transactions.md`, `categories.md`, `merchants.md`, `income.md`. Cross-cutting: `ranges.md`. Add a new file when adding a new page.
 
-**Update discipline:** the same PR that adds a UI surface adds a test for it. Same PR that removes a surface removes the test. There's no CI signal when the docs drift — the next manual run is the only feedback loop. When updating, bump the "Last verified" cell in the README index.
-
-**Skip handling:** a test marked `[unreliable on real data]` is blocked on the demo-mode dataset (see `~/.claude/plans/now-i-want-to-distributed-zebra.md` — not yet implemented). Skip and note in the PR review.
+**Update discipline:** the same PR that adds a UI surface adds a test for it. Same PR that removes a surface removes the test. There's no CI signal when the docs drift — the next manual run is the only feedback loop. When updating, bump the "Last verified" cell in the README index. Changes to `client/src/dev/demoData.ts` require auditing every E2E file for stale assertions in the same PR.
 
 ---
 
