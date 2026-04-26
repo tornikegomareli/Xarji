@@ -228,6 +228,7 @@ export function startHttpServer(opts: HttpServerOptions): HttpServerHandle {
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: opts.port,
+    idleTimeout: 60,
     async fetch(req) {
       const url = new URL(req.url);
       const path = url.pathname;
