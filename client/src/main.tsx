@@ -2,6 +2,20 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { buildTheme, loadTweaks } from './ink/theme'
+
+// Apply persisted theme to <html>+<body> BEFORE React mounts, so a
+// user with persisted light-mode preferences doesn't see the dark
+// stylesheet defaults flash for one frame on cold reload. The Layout
+// effect still keeps these in sync when the user toggles the theme
+// at runtime; this just covers the pre-paint window.
+{
+  const theme = buildTheme(loadTweaks())
+  document.documentElement.style.background = theme.bg
+  document.documentElement.style.color = theme.text
+  document.body.style.background = theme.bg
+  document.body.style.color = theme.text
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

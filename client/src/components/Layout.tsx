@@ -9,6 +9,7 @@ import {
   buildTheme,
   loadTweaks,
   saveTweaks,
+  useTheme,
   type InkTweaks,
 } from "../ink/theme";
 import { usePayments } from "../hooks/useTransactions";
@@ -129,6 +130,7 @@ function ConfiguredShell() {
 }
 
 function LoadingSplash() {
+  const T = useTheme();
   return (
     <div
       style={{
@@ -136,8 +138,9 @@ function LoadingSplash() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        color: "rgba(242,242,244,0.42)",
-        fontFamily: "system-ui, sans-serif",
+        background: T.bg,
+        color: T.dim,
+        fontFamily: T.sans,
         fontSize: 13,
       }}
     >
@@ -161,18 +164,19 @@ function LoadingSplash() {
  * and Layout's render branch flips automatically.
  */
 function ServiceUnreachableSplash({ onRetry }: { onRetry: () => void }) {
+  const T = useTheme();
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "#0C0C0E",
+        background: T.bg,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         gap: 16,
-        color: "#F2F2F4",
-        fontFamily: "'Geist', 'Inter', system-ui, sans-serif",
+        color: T.text,
+        fontFamily: T.sans,
         padding: "24px",
         textAlign: "center",
       }}
@@ -182,12 +186,12 @@ function ServiceUnreachableSplash({ onRetry }: { onRetry: () => void }) {
           width: 72,
           height: 72,
           borderRadius: 36,
-          background: "rgba(255,90,58,0.12)",
-          border: "1px solid rgba(255,90,58,0.45)",
+          background: T.accentSoft,
+          border: `1px solid ${T.accent}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#FF5A3A",
+          color: T.accent,
           fontSize: 30,
           fontWeight: 700,
         }}
@@ -200,7 +204,7 @@ function ServiceUnreachableSplash({ onRetry }: { onRetry: () => void }) {
       <div
         style={{
           fontSize: 13,
-          color: "rgba(242,242,244,0.62)",
+          color: T.muted,
           maxWidth: 380,
           lineHeight: 1.55,
         }}
@@ -216,14 +220,14 @@ function ServiceUnreachableSplash({ onRetry }: { onRetry: () => void }) {
           marginTop: 8,
           padding: "10px 20px",
           borderRadius: 10,
-          background: "#FF5A3A",
+          background: T.accent,
           border: "none",
           color: "#fff",
           fontSize: 13,
           fontWeight: 700,
-          fontFamily: "'Geist', 'Inter', system-ui, sans-serif",
+          fontFamily: T.sans,
           cursor: "pointer",
-          boxShadow: "0 8px 24px rgba(255,90,58,0.33)",
+          boxShadow: `0 8px 24px ${T.accentSoft}`,
         }}
       >
         Try again
@@ -233,18 +237,19 @@ function ServiceUnreachableSplash({ onRetry }: { onRetry: () => void }) {
 }
 
 function SetupTransitionSplash({ stuck = false }: { stuck?: boolean }) {
+  const T = useTheme();
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "#0C0C0E",
+        background: T.bg,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         gap: 20,
-        color: "#F2F2F4",
-        fontFamily: "'Geist', 'Inter', system-ui, sans-serif",
+        color: T.text,
+        fontFamily: T.sans,
       }}
     >
       <div
@@ -252,11 +257,11 @@ function SetupTransitionSplash({ stuck = false }: { stuck?: boolean }) {
           width: 72,
           height: 72,
           borderRadius: 36,
-          background: "#FF5A3A",
+          background: T.accent,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          boxShadow: "0 16px 40px rgba(255,90,58,0.35)",
+          boxShadow: `0 16px 40px ${T.accentSoft}`,
         }}
       >
         <svg width={34} height={34} viewBox="0 0 34 34" aria-hidden>
@@ -271,7 +276,7 @@ function SetupTransitionSplash({ stuck = false }: { stuck?: boolean }) {
         </svg>
       </div>
       <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5 }}>You're all set.</div>
-      <div style={{ fontSize: 13, color: "rgba(242,242,244,0.62)" }}>
+      <div style={{ fontSize: 13, color: T.muted }}>
         {stuck ? "Still finalising setup. Refresh once the service is ready." : "Loading your dashboard…"}
       </div>
       {stuck && (
@@ -282,9 +287,9 @@ function SetupTransitionSplash({ stuck = false }: { stuck?: boolean }) {
             marginTop: 8,
             background: "transparent",
             border: "none",
-            color: "rgba(242,242,244,0.78)",
+            color: T.muted,
             fontSize: 13,
-            fontFamily: "'Geist', 'Inter', system-ui, sans-serif",
+            fontFamily: T.sans,
             cursor: "pointer",
             padding: "6px 10px",
             borderRadius: 6,
