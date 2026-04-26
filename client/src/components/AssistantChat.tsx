@@ -553,7 +553,7 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
                   background: T.panel,
                   borderRadius: 10,
                   border: `1px solid ${T.line}`,
-                  boxShadow: "0 12px 30px rgba(0,0,0,0.4)",
+                  boxShadow: T.shadow,
                   zIndex: 50,
                   padding: 4,
                 }}

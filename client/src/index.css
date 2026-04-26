@@ -31,5 +31,5 @@ button { font: inherit; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(242,242,244,0.1); border-radius: 5px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(242,242,244,0.2); }
+::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.18); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.32); }

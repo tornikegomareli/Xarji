@@ -74,7 +74,7 @@ export function CategoryPicker({
         background: T.panel,
         border: `1px solid ${T.lineStrong}`,
         borderRadius: 12,
-        boxShadow: "0 12px 30px rgba(0,0,0,0.4)",
+        boxShadow: T.shadow,
         padding: 8,
         display: "flex",
         flexDirection: "column",

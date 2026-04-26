@@ -212,7 +212,7 @@ function Spotlight({ open, onClose }: { open: boolean; onClose: () => void }) {
           background: T.panel,
           borderRadius: 16,
           border: `1px solid ${T.line}`,
-          boxShadow: "0 30px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.02)",
+          boxShadow: T.shadow,
           overflow: "hidden",
           animation: "spot-rise .18s ease-out",
         }}

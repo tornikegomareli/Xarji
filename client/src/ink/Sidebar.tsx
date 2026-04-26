@@ -65,8 +65,8 @@ export function Sidebar({
               cursor: "pointer",
               textAlign: "left",
               textDecoration: "none",
-              background: isActive ? T.text : "transparent",
-              color: isActive ? T.bg : T.muted,
+              background: isActive ? T.panelHi : "transparent",
+              color: isActive ? T.text : T.muted,
               fontSize: 13.5,
               fontWeight: isActive ? 700 : 500,
               fontFamily: T.sans,
@@ -86,8 +86,8 @@ export function Sidebar({
                       letterSpacing: 0.5,
                       padding: "2px 6px",
                       borderRadius: 4,
-                      background: isActive ? "rgba(12,12,14,0.12)" : T.accent,
-                      color: isActive ? T.bg : "#fff",
+                      background: isActive ? T.line : T.accent,
+                      color: isActive ? T.muted : "#fff",
                     }}
                   >
                     {it.pillBadge}
@@ -98,7 +98,7 @@ export function Sidebar({
                     style={{
                       fontFamily: T.mono,
                       fontSize: 10,
-                      color: isActive ? "rgba(12,12,14,0.55)" : T.dim,
+                      color: isActive ? T.dim : T.dim,
                       fontWeight: 600,
                     }}
                   >

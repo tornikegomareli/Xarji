@@ -55,6 +55,11 @@ export function Layout() {
     return () => clearTimeout(id);
   }, [transitioning, health.state]);
 
+  useEffect(() => {
+    document.body.style.background = theme.bg;
+    document.body.style.color = theme.text;
+  }, [theme.bg, theme.text]);
+
   return (
     <TweaksContext.Provider value={{ tweaks, setTweaks }}>
       <ThemeContext.Provider value={theme}>
