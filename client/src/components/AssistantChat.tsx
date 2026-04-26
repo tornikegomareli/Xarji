@@ -49,6 +49,11 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
   const [activeId, setActiveIdState] = useState<string | null>(loadActiveThreadId);
   const [busy, setBusy] = useState(false);
   const [busyStatus, setBusyStatus] = useState<string>("Thinking…");
+  // Which thread the in-flight run originated from. Drives whether the
+  // typing indicator shows up at all when the user is viewing a
+  // different thread — without this, switching to an idle conversation
+  // shows a phantom "Thinking…" pill that belongs to a sibling thread.
+  const [busyThreadId, setBusyThreadId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -127,12 +132,22 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
   };
 
   const runAgentForActive = (text: string) => {
+    // Capture the originating thread id at send time so streamed
+    // events route to that conversation even if the user switches
+    // threads mid-response. Without this, every event handler called
+    // `loadActiveThreadId()` and would have leaked the in-flight
+    // response into whichever thread happened to be active when the
+    // delta arrived. Same fix applies to the finalize step that
+    // clears `streaming`.
+    const originThreadId = loadActiveThreadId();
     setBusy(true);
+    setBusyThreadId(originThreadId);
     setBusyStatus("Thinking…");
+
     const handle = (event: AssistantEvent) => {
-      const id = loadActiveThreadId();
+      if (!originThreadId) return;
       const list = loadThreads();
-      const idx = list.findIndex((t) => t.id === id);
+      const idx = list.findIndex((t) => t.id === originThreadId);
       if (idx === -1) return;
       const t = list[idx];
       let assistant = t.messages[t.messages.length - 1];
@@ -159,7 +174,13 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
       } else if (event.type === "block") {
         assistant.blocks.push(event.block);
       } else if (event.type === "status") {
-        setBusyStatus(event.text);
+        // Status only updates the loading-indicator pill which only
+        // shows when the *current* active thread is busy, so reading
+        // setBusyStatus from any in-flight run is fine — but only if
+        // the user is still looking at the thread that started it.
+        if (loadActiveThreadId() === originThreadId) {
+          setBusyStatus(event.text);
+        }
         return;
       }
 
@@ -177,16 +198,18 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
         });
       })
       .finally(() => {
-        const id = loadActiveThreadId();
-        const list = loadThreads();
-        const idx = list.findIndex((t) => t.id === id);
-        if (idx !== -1) {
-          const last = list[idx].messages[list[idx].messages.length - 1];
-          if (last) delete last.streaming;
-          saveThreads(list);
-          setThreads(list.slice());
+        if (originThreadId) {
+          const list = loadThreads();
+          const idx = list.findIndex((t) => t.id === originThreadId);
+          if (idx !== -1) {
+            const last = list[idx].messages[list[idx].messages.length - 1];
+            if (last) delete last.streaming;
+            saveThreads(list);
+            setThreads(list.slice());
+          }
         }
         setBusy(false);
+        setBusyThreadId(null);
       });
   };
 
@@ -586,7 +609,7 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
             {activeThread.messages.map((m) => (
               <Message key={m.id} message={m} T={T} />
             ))}
-            {busy && <TypingDots T={T} status={busyStatus} />}
+            {busy && busyThreadId === activeId && <TypingDots T={T} status={busyStatus} />}
           </div>
         )}
 

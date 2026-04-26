@@ -6,6 +6,8 @@
 import {
   startOfMonth,
   endOfMonth,
+  startOfDay,
+  endOfDay,
   isWithinInterval,
   subMonths,
   format,
@@ -123,8 +125,13 @@ const searchTransactions: AITool = {
     const currency = typeof input.currency === "string" ? input.currency.toUpperCase() : null;
     const min = typeof input.minAmount === "number" ? input.minAmount : null;
     const max = typeof input.maxAmount === "number" ? input.maxAmount : null;
-    const from = typeof input.dateFrom === "string" ? new Date(input.dateFrom).getTime() : null;
-    const to = typeof input.dateTo === "string" ? new Date(input.dateTo).getTime() : null;
+    // dateFrom/dateTo are inclusive calendar-day bounds. Parsing
+    // "YYYY-MM-DD" with `new Date(...)` gives midnight in the local
+    // timezone — we widen the range to startOfDay(from) and endOfDay(to)
+    // so the user gets *every* transaction on the boundary days, not
+    // just rows that happen to fall before the boundary's midnight tick.
+    const from = typeof input.dateFrom === "string" ? startOfDay(new Date(input.dateFrom)).getTime() : null;
+    const to = typeof input.dateTo === "string" ? endOfDay(new Date(input.dateTo)).getTime() : null;
     const limit = typeof input.limit === "number" ? Math.min(100, Math.max(1, input.limit)) : 20;
 
     const matches = ctx.payments
