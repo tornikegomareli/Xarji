@@ -889,38 +889,48 @@ function Message({ message, T }: { message: AIMessage; T: InkTheme }) {
   );
 }
 
+function renderInline(line: string, T: InkTheme) {
+  return line.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((p, i) => {
+    if (p.startsWith("**"))
+      return (
+        <strong key={i} style={{ fontWeight: 700, color: T.text }}>
+          {p.slice(2, -2)}
+        </strong>
+      );
+    if (p.startsWith("`"))
+      return (
+        <code
+          key={i}
+          style={{
+            fontFamily: T.mono,
+            fontSize: 12.5,
+            padding: "2px 5px",
+            background: T.panelAlt,
+            borderRadius: 4,
+            color: T.muted,
+          }}
+        >
+          {p.slice(1, -1)}
+        </code>
+      );
+    return <span key={i}>{p}</span>;
+  });
+}
+
 function Block({ block, T }: { block: AIBlock; T: InkTheme }) {
   if (block.kind === "text") {
-    const parts = block.text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+    const lines = block.text.split("\n");
     return (
       <div
         style={{ fontSize: 14, lineHeight: 1.6, color: T.text, fontFamily: T.sans, maxWidth: 720 }}
       >
-        {parts.map((p, i) => {
-          if (p.startsWith("**"))
-            return (
-              <strong key={i} style={{ fontWeight: 700, color: T.text }}>
-                {p.slice(2, -2)}
-              </strong>
-            );
-          if (p.startsWith("`"))
-            return (
-              <code
-                key={i}
-                style={{
-                  fontFamily: T.mono,
-                  fontSize: 12.5,
-                  padding: "2px 6px",
-                  background: T.panelAlt,
-                  borderRadius: 5,
-                  color: T.accent,
-                }}
-              >
-                {p.slice(1, -1)}
-              </code>
-            );
-          return <span key={i}>{p}</span>;
-        })}
+        {lines.map((line, i) =>
+          line.trim() === "" ? (
+            <div key={i} style={{ height: "0.6em" }} />
+          ) : (
+            <div key={i}>{renderInline(line, T)}</div>
+          )
+        )}
       </div>
     );
   }
