@@ -85,7 +85,7 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [activeThread?.messages?.length, busy]);
+  }, [activeThread?.messages, busy]);
 
   const switchTo = (id: string) => {
     setActiveThreadId(id);
