@@ -3,14 +3,13 @@ import { useTheme, useViewport } from "../ink/theme";
 import { Card, PageHeader } from "../ink/primitives";
 import { useConvertedPayments } from "../hooks/useTransactions";
 import { useCategorizer } from "../hooks/useCategorizer";
-import { isWithinInterval, startOfMonth, endOfMonth, format } from "date-fns";
+import { useRangeState } from "../hooks/useRangeState";
+import { isInRange } from "../lib/dateRange";
 
 export function Merchants() {
   const T = useTheme();
   const vp = useViewport();
-  const now = new Date();
-  const monthStart = startOfMonth(now);
-  const monthEnd = endOfMonth(now);
+  const { range, props: rangeProps } = useRangeState("Month");
   const { payments } = useConvertedPayments();
   const { getCategory } = useCategorizer();
   const [search, setSearch] = useState("");
@@ -31,7 +30,7 @@ export function Merchants() {
     const map: Record<string, MerchantAgg> = {};
     for (const p of payments) {
       if (p.gelAmount === null) continue;
-      if (!isWithinInterval(new Date(p.transactionDate), { start: monthStart, end: monthEnd })) continue;
+      if (!isInRange(p.transactionDate, range)) continue;
       const key = p.merchant || "Unknown";
       const raw = p.rawMessage || "";
       if (!map[key]) {
@@ -49,7 +48,7 @@ export function Merchants() {
       map[key].count += 1;
     }
     return Object.values(map).sort((a, b) => b.total - a.total);
-  }, [payments, monthStart, monthEnd]);
+  }, [payments, range]);
 
   const total = merchants.reduce((s, m) => s + m.total, 0);
   const filtered = merchants.filter(
@@ -61,9 +60,9 @@ export function Merchants() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap, height: "100%" }}>
       <PageHeader
-        eyebrow={`Who you paid · ${format(now, "MMMM")}`}
+        eyebrow={`Who you paid · ${range.label}`}
         title="Merchants"
-        active="Month"
+        {...rangeProps}
         rightSlot={<span style={{ fontFamily: T.mono, fontSize: 11, color: T.dim }}>{merchants.length} unique</span>}
       />
 

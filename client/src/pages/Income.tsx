@@ -2,19 +2,21 @@ import { useMemo, useState } from "react";
 import { useTheme, useViewport } from "../ink/theme";
 import { Card, CardLabel, CardTitle, Pill, PageHeader } from "../ink/primitives";
 import { TxRow, type InkTx } from "../ink/TxRow";
-import { useConvertedCredits, useMonthCredits } from "../hooks/useCredits";
+import { useConvertedCredits, useRangeCredits } from "../hooks/useCredits";
 import { useBankSenders } from "../hooks/useBankSenders";
+import { useRangeState } from "../hooks/useRangeState";
 import { AreaChart } from "../ink/charts";
 import { currencySymbol, monthKey, monthLabel, formatLocalDay, parseLocalDay } from "../ink/format";
-import { isWithinInterval, startOfMonth, endOfMonth, format, subMonths } from "date-fns";
+import { isInRange } from "../lib/dateRange";
+import { format, subMonths } from "date-fns";
 
 export function Income() {
   const T = useTheme();
   const vp = useViewport();
   const now = new Date();
-  const my = { month: now.getMonth(), year: now.getFullYear() };
+  const { range, props: rangeProps } = useRangeState("Month");
   const { credits } = useConvertedCredits();
-  const monthly = useMonthCredits(my);
+  const monthly = useRangeCredits(range);
   const { senders } = useBankSenders();
 
   const [search, setSearch] = useState("");
@@ -61,6 +63,10 @@ export function Income() {
 
   const filtered = useMemo(() => {
     return allTx.filter((t) => {
+      // Apply the active range first so the ledger reconciles with the
+      // hero totals; previously the summary cards switched on range
+      // but the list kept showing all-time credits.
+      if (!isInRange(t.transactionDate, range)) return false;
       if (bank !== "all" && t.bankSenderId !== bank) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -70,7 +76,7 @@ export function Income() {
       }
       return true;
     });
-  }, [allTx, bank, search]);
+  }, [allTx, bank, search, range]);
 
   const groups = useMemo(() => {
     const g: Record<string, InkTx[]> = {};
@@ -93,13 +99,11 @@ export function Income() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const monthStart = startOfMonth(now);
-  const monthEnd = endOfMonth(now);
   const topSources = useMemo(() => {
     const map: Record<string, { name: string; total: number; count: number }> = {};
     for (const c of credits) {
       if (c.gelAmount === null) continue;
-      if (!isWithinInterval(new Date(c.transactionDate), { start: monthStart, end: monthEnd })) continue;
+      if (!isInRange(c.transactionDate, range)) continue;
       const name = c.counterparty || "—";
       if (!map[name]) map[name] = { name, total: 0, count: 0 };
       map[name].total += c.gelAmount;
@@ -108,14 +112,14 @@ export function Income() {
     return Object.values(map)
       .sort((a, b) => b.total - a.total)
       .slice(0, 5);
-  }, [credits, monthStart, monthEnd]);
+  }, [credits, range]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap, height: "100%" }}>
       <PageHeader
         eyebrow="Money coming in · parsed from SMS"
         title="Income"
-        active="Month"
+        {...rangeProps}
         rightSlot={
           <Pill bg="rgba(75,217,162,0.15)" color={T.green}>
             {credits.length} total

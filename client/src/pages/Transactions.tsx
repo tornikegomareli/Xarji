@@ -5,6 +5,8 @@ import { Card, CardLabel, PageHeader } from "../ink/primitives";
 import { TxRow, type InkTx } from "../ink/TxRow";
 import { useConvertedPayments, useFailedPayments } from "../hooks/useTransactions";
 import { useBankSenders } from "../hooks/useBankSenders";
+import { useRangeState } from "../hooks/useRangeState";
+import { isInRange } from "../lib/dateRange";
 import { DEFAULT_CATEGORIES } from "../lib/utils";
 import { useCategorizer } from "../hooks/useCategorizer";
 import { currencySymbol, formatLocalDay, parseLocalDay } from "../ink/format";
@@ -18,6 +20,7 @@ export function Transactions() {
   const { failedPayments } = useFailedPayments();
   const { senders } = useBankSenders();
   const { getCategory, categorize: categorizeId } = useCategorizer();
+  const { range, props: rangeProps } = useRangeState("Month");
 
   // `?category=<id>` pre-selects the category filter on load. Categories
   // page navigates here with this param when the user clicks "All →" on
@@ -72,6 +75,7 @@ export function Transactions() {
 
   const filtered = useMemo(() => {
     return allTx.filter((t) => {
+      if (!isInRange(t.transactionDate, range)) return false;
       if (bank !== "all" && t.bankSenderId !== bank) return false;
       if (cat !== "all" && t.category !== cat) return false;
       if (kind !== "all" && t.kind !== kind) return false;
@@ -81,7 +85,7 @@ export function Transactions() {
       }
       return true;
     });
-  }, [allTx, bank, cat, kind, search]);
+  }, [allTx, bank, cat, kind, search, range]);
 
   const groups = useMemo(() => {
     const g: Record<string, InkTx[]> = {};
@@ -135,7 +139,7 @@ export function Transactions() {
       <PageHeader
         eyebrow="All transactions · read-only from SMS"
         title="Transactions"
-        active="Month"
+        {...rangeProps}
         rightSlot={
           <span style={{ fontFamily: T.mono, fontSize: 11, color: T.dim }}>
             {filtered.length.toLocaleString("en-US")} results

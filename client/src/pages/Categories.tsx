@@ -8,8 +8,10 @@ import { useConvertedPayments } from "../hooks/useTransactions";
 import { useMonthlyTrend } from "../hooks/useMonthlyTrend";
 import { DEFAULT_CATEGORIES, type InkCategory } from "../lib/utils";
 import { useCategorizer } from "../hooks/useCategorizer";
+import { useRangeState } from "../hooks/useRangeState";
+import { isInRange } from "../lib/dateRange";
 import { formatCompact, monthKey } from "../ink/format";
-import { isWithinInterval, startOfMonth, endOfMonth, format } from "date-fns";
+import { format } from "date-fns";
 
 interface CatAgg {
   cat: string;
@@ -23,19 +25,15 @@ export function Categories() {
   const vp = useViewport();
   const navigate = useNavigate();
   const now = new Date();
-  const monthStart = startOfMonth(now);
-  const monthEnd = endOfMonth(now);
 
   const { payments } = useConvertedPayments();
   const { getCategory, categorize: categorizeId } = useCategorizer();
   const trend = useMonthlyTrend(6);
-  const [range, setRange] = useState("Month");
-
-  const inMonth = (ts: number) => isWithinInterval(new Date(ts), { start: monthStart, end: monthEnd });
+  const { range, props: rangeProps } = useRangeState("Month");
 
   const monthPayments = useMemo(
-    () => payments.filter((p) => inMonth(p.transactionDate)),
-    [payments]
+    () => payments.filter((p) => isInRange(p.transactionDate, range)),
+    [payments, range]
   );
 
   const cats: CatAgg[] = useMemo(() => {
@@ -48,7 +46,7 @@ export function Categories() {
       map[cat.id].count += 1;
     }
     return Object.values(map).sort((a, b) => b.total - a.total);
-  }, [monthPayments]);
+  }, [monthPayments, getCategory]);
 
   const total = cats.reduce((s, c) => s + c.total, 0);
   const [selected, setSelected] = useState<string | null>(null);
@@ -112,7 +110,7 @@ export function Categories() {
   if (cats.length === 0) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap }}>
-        <PageHeader eyebrow={eyebrow} title="Categories" active={range} onRange={setRange} />
+        <PageHeader eyebrow={eyebrow} title="Categories" {...rangeProps} />
         <Card>
           <div style={{ color: T.muted, fontSize: 13, padding: "40px 0", textAlign: "center", fontFamily: T.sans }}>
             No transactions in {format(now, "MMMM")} yet.
@@ -124,7 +122,7 @@ export function Categories() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap, height: "100%" }}>
-      <PageHeader eyebrow={eyebrow} title="Categories" active={range} onRange={setRange} />
+      <PageHeader eyebrow={eyebrow} title="Categories" {...rangeProps} />
 
       <div
         style={{

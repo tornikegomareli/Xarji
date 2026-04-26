@@ -174,6 +174,9 @@ export function PageHeader({
   ranges = ["Today", "Week", "Month", "Year", "Custom"],
   active = "Month",
   onRange,
+  customStart,
+  customEnd,
+  onCustomChange,
 }: {
   eyebrow?: React.ReactNode;
   title: React.ReactNode;
@@ -181,18 +184,70 @@ export function PageHeader({
   ranges?: string[] | null;
   active?: string;
   onRange?: (r: string) => void;
+  /** YYYY-MM-DD; only consulted when active === "Custom". */
+  customStart?: string;
+  customEnd?: string;
+  /** Fired whenever either custom date input changes. */
+  onCustomChange?: (start: string, end: string) => void;
 }) {
   const T = useTheme();
+  const showCustomInputs = ranges && ranges.includes("Custom") && active === "Custom" && onCustomChange;
+
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, marginBottom: 6 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, marginBottom: 6, flexWrap: "wrap" }}>
       <div>
         {eyebrow && <div style={{ fontSize: 12.5, color: T.muted, fontWeight: 500, fontFamily: T.sans }}>{eyebrow}</div>}
         <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -1, lineHeight: 1.1, marginTop: 4, color: T.text, fontFamily: T.sans }}>
           {title}
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         {rightSlot}
+        {showCustomInputs && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "4px 8px",
+              background: T.panel,
+              borderRadius: 12,
+              border: `1px solid ${T.line}`,
+            }}
+          >
+            <input
+              type="date"
+              value={customStart ?? ""}
+              max={customEnd || undefined}
+              onChange={(e) => onCustomChange!(e.target.value, customEnd ?? "")}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: T.text,
+                fontSize: 12,
+                fontFamily: T.mono,
+                padding: "4px 6px",
+                outline: "none",
+              }}
+            />
+            <span style={{ color: T.dim, fontSize: 12, fontFamily: T.mono }}>→</span>
+            <input
+              type="date"
+              value={customEnd ?? ""}
+              min={customStart || undefined}
+              onChange={(e) => onCustomChange!(customStart ?? "", e.target.value)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: T.text,
+                fontSize: 12,
+                fontFamily: T.mono,
+                padding: "4px 6px",
+                outline: "none",
+              }}
+            />
+          </div>
+        )}
         {ranges && (
           <div style={{ display: "flex", background: T.panel, borderRadius: 12, padding: 3, border: `1px solid ${T.line}` }}>
             {ranges.map((r) => (

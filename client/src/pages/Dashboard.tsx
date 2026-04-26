@@ -1,42 +1,40 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTheme, useViewport, type InkTheme } from "../ink/theme";
 import { Card, CardLabel, CardTitle, Pill, LiveDot, LinkBtn, PageHeader } from "../ink/primitives";
 import { AreaChart, Donut } from "../ink/charts";
 import { TxRow, type InkTx } from "../ink/TxRow";
 import { useConvertedPayments, useFailedPayments } from "../hooks/useTransactions";
-import { useMonthStats, useMonthTopMerchants } from "../hooks/useMonthlyAnalytics";
+import { useRangeStats, useRangeTopMerchants } from "../hooks/useMonthlyAnalytics";
 import { useMonthlyTrend } from "../hooks/useMonthlyTrend";
-import { useCredits, useMonthCredits } from "../hooks/useCredits";
+import { useCredits, useRangeCredits } from "../hooks/useCredits";
+import { useRangeState } from "../hooks/useRangeState";
+import { previousRange } from "../lib/dateRange";
 import { formatCompact } from "../ink/format";
 import { DEFAULT_CATEGORIES } from "../lib/utils";
 import { useCategorizer } from "../hooks/useCategorizer";
-import { isWithinInterval, startOfMonth, endOfMonth, subMonths, format } from "date-fns";
+import { isWithinInterval, format } from "date-fns";
 
 export function Dashboard() {
   const T = useTheme();
   const vp = useViewport();
   const now = new Date();
-  const my = { month: now.getMonth(), year: now.getFullYear() };
+  const { range, props: rangeProps } = useRangeState("Month");
+  const prevPeriod = useMemo(() => previousRange(range), [range]);
 
-  const prevDate = subMonths(now, 1);
-  const prevMy = { month: prevDate.getMonth(), year: prevDate.getFullYear() };
-
-  const stats = useMonthStats(my);
-  const topMerchants = useMonthTopMerchants(my, 5);
+  const stats = useRangeStats(range);
+  const topMerchants = useRangeTopMerchants(range, 5);
   const trend = useMonthlyTrend(9);
   const { payments } = useConvertedPayments();
   const { failedPayments } = useFailedPayments();
   const { credits } = useCredits();
-  const monthCredits = useMonthCredits(my);
-  const prevMonthCredits = useMonthCredits(prevMy);
+  const monthCredits = useRangeCredits(range);
+  const prevMonthCredits = useRangeCredits(prevPeriod);
   const { getCategory } = useCategorizer();
 
-  const [range, setRange] = useState("Month");
-
-  const prevMonthName = format(prevDate, "MMMM");
-  const prevMonthShort = format(prevDate, "MMM");
-  const monthYearLabel = format(now, "MMMM yyyy");
-  const monthShortName = format(now, "MMM").toUpperCase();
+  const prevMonthName = prevPeriod.label;
+  const prevMonthShort = prevPeriod.label.split(" ")[0]; // "Mar 2026" → "Mar", "Mar 1 – 31" → "Mar"
+  const monthYearLabel = range.label;
+  const monthShortName = range.label.split(" ")[0].toUpperCase();
   const income = monthCredits.total;
   const net = income - stats.total;
   const savingsRate = income > 0 ? (net / income) * 100 : 0;
@@ -50,21 +48,21 @@ export function Dashboard() {
     [trend]
   );
 
-  // Category breakdown for this month
+  // Category breakdown for the active range. Uses the same date-fns
+  // isWithinInterval the aggregator hooks use so the donut total
+  // always reconciles with stats.total.
   const byCategory = useMemo(() => {
-    const monthStart = startOfMonth(now);
-    const monthEnd = endOfMonth(now);
     const map: Record<string, { total: number; count: number; meta: typeof DEFAULT_CATEGORIES[number] }> = {};
     for (const p of payments) {
       if (p.gelAmount === null) continue;
-      if (!isWithinInterval(new Date(p.transactionDate), { start: monthStart, end: monthEnd })) continue;
+      if (!isWithinInterval(new Date(p.transactionDate), { start: range.start, end: range.end })) continue;
       const cat = getCategory(p.merchant, p.rawMessage);
       if (!map[cat.id]) map[cat.id] = { total: 0, count: 0, meta: cat };
       map[cat.id].total += p.gelAmount;
       map[cat.id].count += 1;
     }
     return Object.values(map).sort((a, b) => b.total - a.total);
-  }, [payments, getCategory]);
+  }, [payments, getCategory, range]);
 
   const topCats = byCategory.slice(0, 5);
   const totalCatSum = topCats.reduce((s, c) => s + c.total, 0) || 1;
@@ -133,8 +131,7 @@ export function Dashboard() {
       <PageHeader
         eyebrow={`${greeting}`}
         title={monthTitle}
-        active={range}
-        onRange={setRange}
+        {...rangeProps}
       />
 
       <div
