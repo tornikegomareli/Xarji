@@ -45,6 +45,14 @@ const schema = i.schema({
       enabled: i.boolean(),
       createdAt: i.number(),
     }),
+    // Manual category overrides per merchant — see service-side
+    // schema for the rationale; this is the client-side mirror so
+    // db.useQuery is typed.
+    merchantCategoryOverrides: i.entity({
+      merchant: i.string().unique(),
+      categoryId: i.string(),
+      createdAt: i.number(),
+    }),
     credits: i.entity({
       transactionId: i.string().unique(),
       transactionType: i.string(),
@@ -163,6 +171,13 @@ export type BankSender = {
   senderId: string;
   displayName: string;
   enabled: boolean;
+  createdAt: number;
+};
+
+export type MerchantCategoryOverride = {
+  id: string;
+  merchant: string;
+  categoryId: string;
   createdAt: number;
 };
 

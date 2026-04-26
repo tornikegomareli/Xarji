@@ -12,7 +12,6 @@ import {
   subMonths,
   format,
 } from "date-fns";
-import { autoCategorize } from "../../utils";
 import type { AITool, AIToolContext } from "./types";
 
 const MONTH_INPUT = {
@@ -57,7 +56,7 @@ const getMonthSummary: AITool = {
       m.total += p.gelAmount;
       m.count += 1;
       merchantTotals.set(merchant, m);
-      const category = autoCategorize(p.merchant ?? null);
+      const category = ctx.categorizeName(p.merchant ?? null);
       const c = categoryTotals.get(category) ?? { total: 0, count: 0 };
       c.total += p.gelAmount;
       c.count += 1;
@@ -141,7 +140,7 @@ const searchTransactions: AITool = {
           if (!haystack.includes(query)) return false;
         }
         if (category) {
-          const cat = autoCategorize(p.merchant ?? null).toLowerCase();
+          const cat = ctx.categorizeName(p.merchant ?? null).toLowerCase();
           if (cat !== category) return false;
         }
         if (currency && p.currency.toUpperCase() !== currency) return false;
@@ -159,7 +158,7 @@ const searchTransactions: AITool = {
         amount: p.amount,
         currency: p.currency,
         gelAmount: p.gelAmount !== null ? Math.round(p.gelAmount) : null,
-        category: autoCategorize(p.merchant ?? null),
+        category: ctx.categorizeName(p.merchant ?? null),
         card: p.cardLastDigits ?? null,
       }));
 
@@ -200,7 +199,7 @@ const compareMonths: AITool = {
       for (const p of ctx.payments) {
         if (!inRange(p.transactionDate) || p.gelAmount === null) continue;
         spent += p.gelAmount;
-        const cat = autoCategorize(p.merchant ?? null);
+        const cat = ctx.categorizeName(p.merchant ?? null);
         cats.set(cat, (cats.get(cat) ?? 0) + p.gelAmount);
       }
       for (const c of ctx.credits) {
@@ -244,7 +243,7 @@ const listCategories: AITool = {
     const monthTotals = new Map<string, { total: number; count: number }>();
     for (const p of ctx.payments) {
       if (!inMonth(p.transactionDate) || p.gelAmount === null) continue;
-      const cat = autoCategorize(p.merchant ?? null);
+      const cat = ctx.categorizeName(p.merchant ?? null);
       const v = monthTotals.get(cat) ?? { total: 0, count: 0 };
       v.total += p.gelAmount;
       v.count += 1;

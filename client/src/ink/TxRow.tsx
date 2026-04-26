@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useTheme, useViewport } from "./theme";
 import { Pill } from "./primitives";
-import { getCategory } from "../lib/utils";
+import { useCategorizer } from "../hooks/useCategorizer";
+import { CategoryPicker } from "../components/CategoryPicker";
 import { formatTime, currencySymbol } from "./format";
 
 export interface InkTx {
@@ -33,9 +35,15 @@ export function TxRow({
 }) {
   const T = useTheme();
   const vp = useViewport();
+  const { getCategory } = useCategorizer();
   const cat = getCategory(t.merchant, t.rawMerchant);
   const failed = t.kind === "failed";
   const credit = t.kind === "credit";
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // The picker only makes sense for payments — credits don't carry a
+  // user-meaningful category, and overriding a declined transaction's
+  // categorisation has no downstream effect either.
+  const canChangeCategory = t.kind === "payment" && !!t.merchant;
   const pad = compact ? "10px 0" : T.density.rowPad;
   const isFx = (t.kind === "payment" || t.kind === "credit") && t.currency !== "GEL";
   const cols = vp.narrow ? "32px 1fr 90px" : "36px 1fr 110px 110px 90px";
@@ -64,6 +72,7 @@ export function TxRow({
         borderBottom: isLast ? "none" : `1px solid ${T.line}`,
         alignItems: "center",
         cursor: onClick ? "pointer" : "default",
+        position: "relative",
       }}
     >
       <div
@@ -128,8 +137,56 @@ export function TxRow({
         </div>
       </div>
       {!vp.narrow && (
-        <div style={{ fontFamily: T.sans, fontSize: 12, color: T.muted, fontWeight: 500 }}>
-          {credit ? "Income" : cat?.name}
+        <div style={{ fontFamily: T.sans, fontSize: 12, fontWeight: 500, position: "relative" }}>
+          {canChangeCategory ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setPickerOpen((o) => !o);
+              }}
+              title="Change category"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "4px 8px",
+                margin: "-4px -8px",
+                borderRadius: 6,
+                background: pickerOpen ? T.panelAlt : "transparent",
+                border: "none",
+                color: T.muted,
+                fontSize: 12,
+                fontFamily: T.sans,
+                cursor: "pointer",
+                transition: "background .12s ease",
+              }}
+              onMouseEnter={(e) => {
+                if (!pickerOpen) (e.currentTarget as HTMLButtonElement).style.background = T.panelAlt;
+              }}
+              onMouseLeave={(e) => {
+                if (!pickerOpen) (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  background: cat?.color ?? T.muted,
+                }}
+              />
+              {cat?.name}
+            </button>
+          ) : (
+            <span style={{ color: T.muted }}>{credit ? "Income" : cat?.name}</span>
+          )}
+          {pickerOpen && cat && (
+            <CategoryPicker
+              merchant={t.merchant}
+              current={cat}
+              onClose={() => setPickerOpen(false)}
+            />
+          )}
         </div>
       )}
       {!vp.narrow && (

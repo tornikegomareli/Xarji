@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useTheme, useViewport } from "../ink/theme";
 import { Card, PageHeader } from "../ink/primitives";
 import { useConvertedPayments } from "../hooks/useTransactions";
-import { getCategory } from "../lib/utils";
+import { useCategorizer } from "../hooks/useCategorizer";
 import { isWithinInterval, startOfMonth, endOfMonth, format } from "date-fns";
 
 export function Merchants() {
@@ -12,6 +12,7 @@ export function Merchants() {
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
   const { payments } = useConvertedPayments();
+  const { getCategory } = useCategorizer();
   const [search, setSearch] = useState("");
 
   const merchants = useMemo(() => {

@@ -74,6 +74,19 @@ const schema = i.schema({
       enabled: i.boolean(),
       createdAt: i.number(),
     }),
+
+    // Manual category overrides per merchant. The dashboard's regex
+    // categoriser is a sensible default but doesn't know about the
+    // user's intent — e.g. they may want SOCAR routed to "Cash &
+    // ATM" instead of "Transport" because they pay with cash there.
+    // One row per merchant; the override wins everywhere the user-
+    // facing categoriser is consulted (Dashboard donut, Categories
+    // page, AI tools).
+    merchantCategoryOverrides: i.entity({
+      merchant: i.string().unique(),
+      categoryId: i.string(),
+      createdAt: i.number(),
+    }),
   },
   links: {},
 });

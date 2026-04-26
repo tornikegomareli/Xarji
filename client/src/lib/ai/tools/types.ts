@@ -16,6 +16,12 @@ export interface AIToolContext {
   categories: Category[];
   bankSenders: BankSender[];
   now: Date;
+  /** Override-aware category-name lookup for a merchant. Honours the
+   *  user's manual `merchantCategoryOverrides` rows; falls back to the
+   *  regex categoriser. Tools should always call this instead of the
+   *  static `autoCategorize` so an "I moved Spotify to Subscriptions"
+   *  override actually shows up in the AI's view of the data. */
+  categorizeName: (merchant: string | null | undefined) => string;
 }
 
 export interface AITool {

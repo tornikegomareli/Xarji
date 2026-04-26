@@ -7,6 +7,7 @@ import { useConvertedPayments, useFailedPayments } from "./useTransactions";
 import { useConvertedCredits } from "./useCredits";
 import { useCategories } from "./useCategories";
 import { useBankSenders } from "./useBankSenders";
+import { useCategorizer } from "./useCategorizer";
 import { getProviderClient } from "../lib/ai/provider";
 import { runAgent, type AssistantEvent } from "../lib/ai/orchestrator";
 import { READONLY_TOOLS } from "../lib/ai/tools/readonly";
@@ -113,6 +114,7 @@ export function useAgentRunner() {
   const { failedPayments } = useFailedPayments();
   const { categories } = useCategories();
   const { senders } = useBankSenders();
+  const { categorizeName } = useCategorizer();
 
   return useCallback(
     async (
@@ -135,11 +137,12 @@ export function useAgentRunner() {
           categories,
           bankSenders: senders,
           now: new Date(),
+          categorizeName,
         },
         emit,
         signal,
       });
     },
-    [payments, credits, failedPayments, categories, senders]
+    [payments, credits, failedPayments, categories, senders, categorizeName]
   );
 }

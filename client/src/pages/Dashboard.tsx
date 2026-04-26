@@ -8,7 +8,8 @@ import { useMonthStats, useMonthTopMerchants } from "../hooks/useMonthlyAnalytic
 import { useMonthlyTrend } from "../hooks/useMonthlyTrend";
 import { useCredits, useMonthCredits } from "../hooks/useCredits";
 import { formatCompact } from "../ink/format";
-import { getCategory, DEFAULT_CATEGORIES } from "../lib/utils";
+import { DEFAULT_CATEGORIES } from "../lib/utils";
+import { useCategorizer } from "../hooks/useCategorizer";
 import { isWithinInterval, startOfMonth, endOfMonth, subMonths, format } from "date-fns";
 
 export function Dashboard() {
@@ -28,6 +29,7 @@ export function Dashboard() {
   const { credits } = useCredits();
   const monthCredits = useMonthCredits(my);
   const prevMonthCredits = useMonthCredits(prevMy);
+  const { getCategory } = useCategorizer();
 
   const [range, setRange] = useState("Month");
 
@@ -62,7 +64,7 @@ export function Dashboard() {
       map[cat.id].count += 1;
     }
     return Object.values(map).sort((a, b) => b.total - a.total);
-  }, [payments]);
+  }, [payments, getCategory]);
 
   const topCats = byCategory.slice(0, 5);
   const totalCatSum = topCats.reduce((s, c) => s + c.total, 0) || 1;
@@ -114,7 +116,7 @@ export function Dashboard() {
       })),
     ];
     return combined.sort((a, b) => b.transactionDate - a.transactionDate).slice(0, 7);
-  }, [payments, failedPayments, credits]);
+  }, [payments, failedPayments, credits, getCategory]);
 
   const positive = stats.totalChange > 0;
   const dayNum = now.getDate();

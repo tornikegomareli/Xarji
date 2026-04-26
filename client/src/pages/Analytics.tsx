@@ -1,7 +1,7 @@
 import { useTheme } from "../ink/theme";
 import { Card, CardTitle, Pill, PageHeader } from "../ink/primitives";
 import { useSignals } from "../hooks/useSignals";
-import { getCategory } from "../lib/utils";
+import { useCategorizer } from "../hooks/useCategorizer";
 
 function SignalCard({
   icon,
@@ -55,6 +55,7 @@ function SignalCard({
 export function Analytics() {
   const T = useTheme();
   const { monthFailed, repeatedDeclines, largeTx, newMerchants, cards, activeCount } = useSignals();
+  const { getCategory } = useCategorizer();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap, height: "100%" }}>

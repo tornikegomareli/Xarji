@@ -6,7 +6,8 @@ import { AreaChart, Donut, HBar } from "../ink/charts";
 import { TxRow, type InkTx } from "../ink/TxRow";
 import { useConvertedPayments } from "../hooks/useTransactions";
 import { useMonthlyTrend } from "../hooks/useMonthlyTrend";
-import { DEFAULT_CATEGORIES, categorizeId, getCategory, type InkCategory } from "../lib/utils";
+import { DEFAULT_CATEGORIES, type InkCategory } from "../lib/utils";
+import { useCategorizer } from "../hooks/useCategorizer";
 import { formatCompact, monthKey } from "../ink/format";
 import { isWithinInterval, startOfMonth, endOfMonth, format } from "date-fns";
 
@@ -26,6 +27,7 @@ export function Categories() {
   const monthEnd = endOfMonth(now);
 
   const { payments } = useConvertedPayments();
+  const { getCategory, categorize: categorizeId } = useCategorizer();
   const trend = useMonthlyTrend(6);
   const [range, setRange] = useState("Month");
 

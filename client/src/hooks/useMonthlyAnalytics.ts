@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { db } from "../lib/instant";
-import { DEFAULT_CATEGORIES, autoCategorize } from "../lib/utils";
+import { DEFAULT_CATEGORIES } from "../lib/utils";
+import { useCategorizer } from "./useCategorizer";
 import { formatLocalDay } from "../ink/format";
 import { useConvertedPayments } from "./useTransactions";
 import {
@@ -167,6 +168,7 @@ export function useMonthTopMerchants(my: MonthYear, limit: number = 10) {
 export function useMonthCategoryAnalytics(my: MonthYear) {
   const { payments } = useConvertedPayments();
   const { data: catData } = db.useQuery({ categories: {} });
+  const { categorizeName } = useCategorizer();
 
   return useMemo(() => {
     const categories = catData?.categories || [];
@@ -188,7 +190,7 @@ export function useMonthCategoryAnalytics(my: MonthYear) {
 
     for (const payment of monthPayments) {
       if (payment.gelAmount === null) continue;
-      const categoryName = autoCategorize(payment.merchant ?? null);
+      const categoryName = categorizeName(payment.merchant ?? null);
       if (categoryTotals[categoryName]) {
         categoryTotals[categoryName].total += payment.gelAmount;
         categoryTotals[categoryName].count += 1;
@@ -213,5 +215,5 @@ export function useMonthCategoryAnalytics(my: MonthYear) {
         percentage: totalSpent > 0 ? (cat.total / totalSpent) * 100 : 0,
       })),
     };
-  }, [payments, catData?.categories, my.month, my.year]);
+  }, [payments, catData?.categories, my.month, my.year, categorizeName]);
 }

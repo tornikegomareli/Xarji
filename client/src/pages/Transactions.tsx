@@ -5,7 +5,8 @@ import { Card, CardLabel, PageHeader } from "../ink/primitives";
 import { TxRow, type InkTx } from "../ink/TxRow";
 import { useConvertedPayments, useFailedPayments } from "../hooks/useTransactions";
 import { useBankSenders } from "../hooks/useBankSenders";
-import { DEFAULT_CATEGORIES, getCategory, categorizeId } from "../lib/utils";
+import { DEFAULT_CATEGORIES } from "../lib/utils";
+import { useCategorizer } from "../hooks/useCategorizer";
 import { currencySymbol, formatLocalDay, parseLocalDay } from "../ink/format";
 
 type TxKind = "all" | "payment" | "failed";
@@ -16,6 +17,7 @@ export function Transactions() {
   const { payments } = useConvertedPayments();
   const { failedPayments } = useFailedPayments();
   const { senders } = useBankSenders();
+  const { getCategory, categorize: categorizeId } = useCategorizer();
 
   // `?category=<id>` pre-selects the category filter on load. Categories
   // page navigates here with this param when the user clicks "All →" on
@@ -66,7 +68,7 @@ export function Transactions() {
       })),
     ];
     return combined.sort((a, b) => b.transactionDate - a.transactionDate);
-  }, [payments, failedPayments]);
+  }, [payments, failedPayments, categorizeId]);
 
   const filtered = useMemo(() => {
     return allTx.filter((t) => {

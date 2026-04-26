@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { db, type Category } from "../lib/instant";
-import { DEFAULT_CATEGORIES, autoCategorize } from "../lib/utils";
+import { DEFAULT_CATEGORIES } from "../lib/utils";
+import { useCategorizer } from "./useCategorizer";
 import { id } from "@instantdb/react";
 
 export function useCategories() {
@@ -56,6 +57,7 @@ export function useCategoryActions() {
 export function useCategoryAnalytics() {
   const { categories } = useCategories();
   const { data: paymentsData } = db.useQuery({ payments: {} });
+  const { categorizeName } = useCategorizer();
 
   return useMemo(() => {
     const payments = paymentsData?.payments || [];
@@ -78,9 +80,11 @@ export function useCategoryAnalytics() {
       categoryTotals["Other"] = { total: 0, count: 0, color: "#6b7280" };
     }
 
-    // Categorize payments
+    // Categorize payments — uses the override-aware categoriser so a
+    // user's manual "Spotify → Subscriptions" override propagates here
+    // even though the regex default puts it under "Other".
     for (const payment of payments) {
-      const categoryName = autoCategorize(payment.merchant ?? null);
+      const categoryName = categorizeName(payment.merchant ?? null);
       if (categoryTotals[categoryName]) {
         categoryTotals[categoryName].total += payment.amount;
         categoryTotals[categoryName].count += 1;
@@ -106,5 +110,5 @@ export function useCategoryAnalytics() {
         percentage: totalSpent > 0 ? (cat.total / totalSpent) * 100 : 0,
       })),
     };
-  }, [categories, paymentsData?.payments]);
+  }, [categories, paymentsData?.payments, categorizeName]);
 }
