@@ -136,7 +136,7 @@ export function Categories() {
         <Card pad="24px 24px" style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
             <Donut
-              segments={cats.map((c) => ({ value: c.total, color: c.meta.color }))}
+              segments={cats.map((c) => ({ value: c.total, color: c.meta.color, name: c.meta.name }))}
               size={220}
               thickness={30}
               gap={4}

@@ -309,7 +309,7 @@ export function Dashboard() {
           ) : (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 4 }}>
               <Donut
-                segments={topCats.map((c) => ({ value: c.total, color: c.meta.color }))}
+                segments={topCats.map((c) => ({ value: c.total, color: c.meta.color, name: c.meta.name }))}
                 size={200}
                 thickness={28}
                 gap={4}

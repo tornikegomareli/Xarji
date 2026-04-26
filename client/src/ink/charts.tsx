@@ -7,9 +7,11 @@ import {
   Pie,
   PieChart,
   ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { useTheme } from "./theme";
 
 export interface AreaDatum {
   label: string;
@@ -29,6 +31,7 @@ export function AreaChart({
   axisColor = "rgba(0,0,0,0.4)",
   axisFont = "ui-monospace, monospace",
   formatY = (n: number) => n.toFixed(0),
+  formatTooltipValue,
   cornerRadius = 0,
   padding = { top: 18, right: 12, bottom: 22, left: 42 },
 }: {
@@ -44,6 +47,7 @@ export function AreaChart({
   axisColor?: string;
   axisFont?: string;
   formatY?: (n: number) => string;
+  formatTooltipValue?: (n: number) => string;
   cornerRadius?: number;
   padding?: { top: number; right: number; bottom: number; left: number };
 }) {
@@ -100,6 +104,11 @@ export function AreaChart({
             tickLine={false}
             width={36}
           />
+          <Tooltip
+            cursor={{ stroke, strokeWidth: 1, strokeDasharray: "3 3", strokeOpacity: 0.6 }}
+            content={<AreaTooltipContent data={data} accent={stroke} formatValue={formatTooltipValue} />}
+            isAnimationActive={false}
+          />
           <Area
             type="monotone"
             dataKey="value"
@@ -110,11 +119,104 @@ export function AreaChart({
             fill={fill ? `url(#${gradientId})` : "none"}
             isAnimationActive={false}
             clipPath={cornerRadius > 0 && fill ? `url(#${clipId})` : undefined}
+            activeDot={{ r: 4, stroke, strokeWidth: 1.5, fill: "#fff" }}
           />
         </RAreaChart>
       </ResponsiveContainer>
     </div>
   );
+}
+
+function AreaTooltipContent({
+  data,
+  accent,
+  formatValue,
+  active,
+  payload,
+}: {
+  data: AreaDatum[];
+  accent: string;
+  formatValue?: (n: number) => string;
+  active?: boolean;
+  payload?: Array<{ payload?: AreaDatum }>;
+}) {
+  const T = useTheme();
+  if (!active || !payload || payload.length === 0) return null;
+  const point = payload[0]?.payload;
+  if (!point) return null;
+  const idx = data.findIndex((d) => d.label === point.label);
+  const prev = idx > 0 ? data[idx - 1] : null;
+  const fmt = formatValue ?? ((n: number) => `₾${Math.round(n).toLocaleString("en-US")}`);
+  const delta =
+    prev && prev.value > 0 ? ((point.value - prev.value) / prev.value) * 100 : null;
+  const deltaColor = delta === null ? T.dim : delta >= 0 ? T.green : T.accent;
+  const deltaSign = delta === null ? "" : delta >= 0 ? "+" : "";
+
+  return (
+    <div
+      style={{
+        background: T.panel,
+        border: `1px solid ${T.lineStrong}`,
+        borderRadius: 10,
+        padding: "10px 12px",
+        boxShadow: T.shadow,
+        fontFamily: T.sans,
+        minWidth: 140,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          color: T.dim,
+          fontFamily: T.mono,
+          letterSpacing: 0.6,
+          textTransform: "uppercase",
+          marginBottom: 4,
+        }}
+      >
+        {point.label}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 4, background: accent, flexShrink: 0 }} />
+        <span
+          style={{
+            fontSize: 15,
+            fontWeight: 700,
+            color: T.text,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {fmt(point.value)}
+        </span>
+      </div>
+      {prev && (
+        <div
+          style={{
+            fontSize: 11,
+            color: T.muted,
+            marginTop: 4,
+            fontFamily: T.mono,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          vs <span style={{ color: T.dim }}>{prev.label}</span> {fmt(prev.value)}
+          {delta !== null && (
+            <span style={{ color: deltaColor, marginLeft: 6 }}>
+              {deltaSign}
+              {delta.toFixed(0)}%
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export interface DonutSegment {
+  value: number;
+  color: string;
+  /** Optional human-readable label shown in the tooltip on hover. */
+  name?: string;
 }
 
 export function Donut({
@@ -126,8 +228,9 @@ export function Donut({
   centerValue,
   centerColor = "#333",
   labelFont = "ui-monospace, monospace",
+  formatTooltipValue,
 }: {
-  segments: { value: number; color: string }[];
+  segments: DonutSegment[];
   size?: number;
   thickness?: number;
   gap?: number;
@@ -135,11 +238,17 @@ export function Donut({
   centerValue?: string;
   centerColor?: string;
   labelFont?: string;
+  formatTooltipValue?: (n: number) => string;
 }) {
   const inner = Math.max(0, size / 2 - thickness);
   const outer = size / 2;
-  const data = segments.map((s, i) => ({ name: String(i), value: s.value, color: s.color }));
+  const data = segments.map((s, i) => ({
+    name: s.name ?? `Segment ${i + 1}`,
+    value: s.value,
+    color: s.color,
+  }));
   const hasData = data.some((d) => d.value > 0);
+  const total = data.reduce((s, d) => s + d.value, 0) || 1;
 
   return (
     <div style={{ position: "relative", width: size, height: size }}>
@@ -161,6 +270,12 @@ export function Donut({
             <Cell key={i} fill={d.color} />
           ))}
         </Pie>
+        {hasData && (
+          <Tooltip
+            content={<DonutTooltipContent total={total} formatValue={formatTooltipValue} />}
+            isAnimationActive={false}
+          />
+        )}
       </PieChart>
       {(centerLabel || centerValue) && (
         <div
@@ -205,6 +320,66 @@ export function Donut({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function DonutTooltipContent({
+  total,
+  formatValue,
+  active,
+  payload,
+}: {
+  total: number;
+  formatValue?: (n: number) => string;
+  active?: boolean;
+  payload?: Array<{ payload?: { name: string; value: number; color: string } }>;
+}) {
+  const T = useTheme();
+  if (!active || !payload || payload.length === 0) return null;
+  const point = payload[0]?.payload;
+  if (!point) return null;
+  const fmt = formatValue ?? ((n: number) => `₾${Math.round(n).toLocaleString("en-US")}`);
+  const share = total > 0 ? (point.value / total) * 100 : 0;
+
+  return (
+    <div
+      style={{
+        background: T.panel,
+        border: `1px solid ${T.lineStrong}`,
+        borderRadius: 10,
+        padding: "10px 12px",
+        boxShadow: T.shadow,
+        fontFamily: T.sans,
+        minWidth: 140,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 4, background: point.color, flexShrink: 0 }} />
+        <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{point.name}</span>
+      </div>
+      <div
+        style={{
+          fontSize: 15,
+          fontWeight: 700,
+          color: T.text,
+          fontFamily: T.sans,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {fmt(point.value)}
+      </div>
+      <div
+        style={{
+          fontSize: 11,
+          color: T.muted,
+          fontFamily: T.mono,
+          marginTop: 2,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {share.toFixed(1)}% of total
+      </div>
     </div>
   );
 }
