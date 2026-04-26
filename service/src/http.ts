@@ -84,6 +84,52 @@ function notFound(): Response {
   return new Response("Not found", { status: 404 });
 }
 
+// Allowlist of `Origin` / `Referer` values accepted by state-changing
+// endpoints. The service binds 127.0.0.1 only, but a malicious page the
+// user is visiting can still POST to it cross-origin via a plain HTML
+// form (no preflight, response unreadable but the side effect lands).
+// Reject anything that doesn't originate from the dashboard itself.
+const SAFE_ORIGINS = new Set([
+  "http://127.0.0.1:8721",
+  "http://localhost:8721",
+  // Vite dev server proxies /api → 8721 with `changeOrigin: false` so
+  // requests still carry the dev origin in the Origin header.
+  "http://127.0.0.1:5173",
+  "http://localhost:5173",
+]);
+
+/**
+ * Reject a state-changing request that doesn't carry an Origin / Referer
+ * matching the dashboard. Returns a 403 Response on rejection, null on
+ * pass. Apply to every POST/PUT/DELETE handler that mutates state, not
+ * just the visible-to-the-user ones — a CSRF that forces a benign-looking
+ * sync still leaks transactions to the user's downstream targets.
+ */
+function assertSafeOrigin(req: Request): Response | null {
+  const origin = req.headers.get("origin");
+  if (origin) {
+    return SAFE_ORIGINS.has(origin)
+      ? null
+      : json({ error: "Forbidden: cross-origin request" }, { status: 403 });
+  }
+  // Browsers always send `Origin` on POST since 2017. Fall back to
+  // `Referer` for non-browser clients (curl, the menu-bar app) and
+  // require it match. If neither is present, reject — a missing Origin
+  // on a POST is suspicious.
+  const referer = req.headers.get("referer");
+  if (!referer) {
+    return json({ error: "Forbidden: missing Origin" }, { status: 403 });
+  }
+  try {
+    const refOrigin = new URL(referer).origin;
+    return SAFE_ORIGINS.has(refOrigin)
+      ? null
+      : json({ error: "Forbidden: cross-origin request" }, { status: 403 });
+  } catch {
+    return json({ error: "Forbidden: malformed Referer" }, { status: 403 });
+  }
+}
+
 // When the generated module is populated the server reads bytes through
 // Bun.file(path) where `path` is the string returned by the file-type
 // import — that string resolves correctly inside a compiled binary.
@@ -317,9 +363,11 @@ export function startHttpServer(opts: HttpServerOptions): HttpServerHandle {
         return json(result);
       }
       if (path === "/api/sync" && req.method === "POST") {
+        const csrf = assertSafeOrigin(req);
+        if (csrf) return csrf;
         if (!opts.service) return json({ error: "Service not running" }, { status: 503 });
-        const count = await opts.service.processNewMessages();
-        return json({ synced: count });
+        const outcome = await opts.service.processNewMessages();
+        return json(outcome);
       }
       if (path === "/api/exchange-rate" && req.method === "GET") {
         const dateParam = url.searchParams.get("date");

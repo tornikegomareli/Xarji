@@ -6,6 +6,23 @@ import { syncAllTargets, initSyncTargets } from "./sync";
 import { defaultConfig, type Config } from "./config";
 import { closeInstantDB, isConnected as isInstantDBConnected } from "./instant-sync";
 
+export type SyncTargetName = "local" | "webhook" | "instantdb";
+
+export interface SyncFailure {
+  sender: string;
+  target: SyncTargetName;
+  error: string;
+}
+
+/** Result of `processNewMessages`. `synced` counts only the transactions
+ *  that landed in every enabled target — partial successes are
+ *  intentionally excluded from the count so the UI never reports a
+ *  number that overstates how many made it to the user's destination. */
+export interface SyncOutcome {
+  synced: number;
+  failures: SyncFailure[];
+}
+
 export class ExpenseTrackerService {
   private config: Config;
   private stateDb: StateDb | null = null;
@@ -37,23 +54,31 @@ export class ExpenseTrackerService {
   }
 
   /**
-   * Process new messages from all configured senders
+   * Process new messages from all configured senders.
+   *
+   * Returns the count of transactions that landed in every enabled
+   * target plus any per-target failures. The cursor (`last_message_id`)
+   * only advances when ALL enabled targets succeeded for a batch — a
+   * transient InstantDB or webhook failure now causes a retry on the
+   * next run instead of silently leaving those messages out of the
+   * destination forever.
    */
-  async processNewMessages(): Promise<number> {
+  async processNewMessages(): Promise<SyncOutcome> {
     if (this.isProcessing) {
       console.log("[Service] Already processing, skipping...");
-      return 0;
+      return { synced: 0, failures: [] };
     }
 
     // Debounce rapid file changes
     const now = Date.now();
     if (now - this.lastProcessTime < this.debounceMs) {
-      return 0;
+      return { synced: 0, failures: [] };
     }
 
     this.isProcessing = true;
     this.lastProcessTime = now;
     let totalNewTransactions = 0;
+    const failures: SyncFailure[] = [];
 
     try {
       const reader = new MessagesDbReader(this.config.messagesDbPath);
@@ -110,13 +135,48 @@ export class ExpenseTrackerService {
           // Sync to all targets (local, webhook, InstantDB)
           const syncResults = await syncAllTargets(newTransactions, this.config, senderId);
 
-          // Save to state database
-          const synced = syncResults.instantdb.success || syncResults.webhook.success;
-          for (const tx of newTransactions) {
-            this.stateDb!.saveTransaction(tx, synced);
+          // Determine which targets are enabled, then collect failures.
+          // Local file is always enabled (it's the failsafe backup).
+          // Webhook and InstantDB are config-gated.
+          const targetChecks: Array<{ target: SyncTargetName; enabled: boolean; success: boolean; error?: string }> = [
+            { target: "local", enabled: true, success: syncResults.local.success, error: syncResults.local.error },
+            {
+              target: "webhook",
+              enabled: this.config.webhook.enabled && !!this.config.webhook.url,
+              success: syncResults.webhook.success,
+              error: syncResults.webhook.error,
+            },
+            {
+              target: "instantdb",
+              enabled: this.config.instantdb.enabled,
+              success: syncResults.instantdb.success,
+              error: syncResults.instantdb.error,
+            },
+          ];
+
+          const enabledFailures = targetChecks
+            .filter((t) => t.enabled && !t.success)
+            .map((t) => ({ sender: senderId, target: t.target, error: t.error || "unknown error" }));
+
+          if (enabledFailures.length > 0) {
+            // Don't advance the cursor and don't mark transactions as
+            // processed-for-state-db — next sync will retry the same
+            // batch. Surface the failure so the manual-sync UI can show
+            // it instead of falsely reporting success.
+            failures.push(...enabledFailures);
+            console.error(
+              `[Service] ${senderId}: holding cursor at ${lastMessageId} — ${enabledFailures
+                .map((f) => `${f.target}: ${f.error}`)
+                .join("; ")}`
+            );
+            continue;
           }
 
-          // Log sync results
+          // Every enabled target succeeded — record locally and advance.
+          for (const tx of newTransactions) {
+            this.stateDb!.saveTransaction(tx, true);
+          }
+
           if (syncResults.instantdb.success && syncResults.instantdb.syncedCount) {
             console.log(`[Service] Synced ${syncResults.instantdb.syncedCount} to InstantDB`);
           }
@@ -135,18 +195,22 @@ export class ExpenseTrackerService {
             `[Service] Processed ${newTransactions.length} new transactions from ${senderId}`
           );
         } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
           console.error(`[Service] Error processing ${senderId}:`, error);
+          failures.push({ sender: senderId, target: "local", error: `processing: ${message}` });
         }
       }
 
       reader.close();
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       console.error("[Service] Error in processNewMessages:", error);
+      failures.push({ sender: "*", target: "local", error: `processing: ${message}` });
     } finally {
       this.isProcessing = false;
     }
 
-    return totalNewTransactions;
+    return { synced: totalNewTransactions, failures };
   }
 
   /**
@@ -193,8 +257,11 @@ export class ExpenseTrackerService {
 
     // Process any existing messages first
     console.log("[Service] Running initial sync...");
-    const count = await this.processNewMessages();
-    console.log(`[Service] Initial sync complete: ${count} transactions`);
+    const initial = await this.processNewMessages();
+    console.log(`[Service] Initial sync complete: ${initial.synced} transactions`);
+    if (initial.failures.length > 0) {
+      console.warn(`[Service] Initial sync had ${initial.failures.length} failure(s); cursor held for retry.`);
+    }
 
     // Start watching for changes
     this.startWatching();
