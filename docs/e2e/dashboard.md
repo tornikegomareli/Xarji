@@ -2,7 +2,21 @@
 
 Surface: `client/src/pages/Dashboard.tsx` and the hooks it consumes.
 
+**Demo mode required.** Confirm via Prereqs in `README.md` before running.
 Open `http://localhost:5173/`. Default range: **Month**.
+
+## Demo-data baseline (current month)
+
+The current-month view should always include:
+
+- ≥100 successful payments distributed across 11 categories.
+- 5+ recurring subs (Spotify, Netflix, Claude, GitHub, iCloud+, Figma — minus any whose `dayOfMonth` falls after today).
+- 1 IKEA purchase ₾4,280 (BOG, large outlier).
+- 1 Pulse Fitness purchase ₾95 (SOLO, brand-new merchant signal).
+- 2× Wolt declines on card `8891` within 4h of each other (yesterday).
+- Income ≥ ₾9,600 from Tech Co LLC alone (₾4800 × 2 salaries) plus freelance + refunds + Mom + Stripe Payout.
+
+These numbers are deterministic for a given calendar day; reseeded as the day rolls over.
 
 ---
 
@@ -13,14 +27,15 @@ Open `http://localhost:5173/`. Default range: **Month**.
 2. Wait for the dashboard to render.
 
 **Expected**
-- Eyebrow shows `Good morning|afternoon|evening` (depending on local hour).
-- Title shows `<current month name> <year>, at a glance` (e.g. `April 2026, at a glance`).
+- Eyebrow: `Good morning|afternoon|evening` (depending on local hour).
+- Title: `<current month name> <year>, at a glance` (e.g. `April 2026, at a glance`).
 - Range buttons visible top-right: **Today / Week / Month / Year / Custom** with **Month** highlighted.
-- Hero card shows "OUTGOING · <month label>" eyebrow and a non-zero "You spent" figure if there are payments this month.
-- Subline reads `<delta vs prev period> · <N> days · <count> transactions` where `<N>` is the count of days from the start of the active range up to today (capped at the range length).
-- Spending mix card renders the donut and a category list.
-- Today & recent card lists transactions newest-first.
-- Top merchants card shows tiles with `<category color> <category name>` / `<merchant>` / `₾<total>` / `×<count>`.
+- Sidebar shows ~1,000+ transactions counter (proves demo mode is active).
+- Hero "You spent" figure ≥ ₾10,000 (current-month payments + IKEA outlier + recurring subs).
+- Subline: `±₾<delta> more|less than <prev month name> · <N> days · <count> transactions` where `<N>` ≤ days elapsed in the month and `<count>` ≥ 100 on demo data.
+- Spending mix donut renders with ≥5 colored segments.
+- Today & recent shows newest-first activity from multiple senders (SOLO / TBC / BOG visible).
+- Top merchants card shows 5 tiles, each with category color dot + name, merchant name, `₾<total>`, `×<count>`.
 
 ---
 
@@ -34,11 +49,11 @@ Open `http://localhost:5173/`. Default range: **Month**.
 5. Click **Month** to return.
 
 **Expected (each step)**
-- Eyebrow on the hero card updates: e.g. Week → "OUTGOING · APR 27 – MAY 3", Year → "OUTGOING · 2026", Custom → "OUTGOING · APR <m> – APR <n>", Today → "OUTGOING · April 27, 2026".
-- Page title updates: "Week of …, at a glance" / "2026, at a glance" / "<from – to>, at a glance" / "April 27, 2026, at a glance".
-- "You spent" figure recomputes for the new window (Week may show ₾0 if no spending today).
-- Subline `<N> days` matches the active range length capped at days elapsed (e.g. Week shows up to 7, Today shows 1).
-- Donut center label matches the range (e.g. Year → "2026", Month → "APR", Today → date label).
+- Eyebrow on the hero card updates: e.g. Week → "OUTGOING · <Mon-Sun range>", Year → "OUTGOING · <year>", Custom → "OUTGOING · <Mmm d – Mmm d>", Today → "OUTGOING · <full date>".
+- Page title updates: "<range.label>, at a glance" — e.g. "2026, at a glance" for Year, "April 1 – April 27, 2026, at a glance" for Custom.
+- "You spent" figure recomputes; Year ≥ Month, Today usually small, Week ≤ Month.
+- Subline `<N> days · <count> transactions` matches the active range length capped at days elapsed (Today = 1, Week ≤ 7, Year up to 117 in late April).
+- Donut center label matches the range (e.g. Year → `<year>`, Month → uppercase month name, Today → date label).
 - Top merchants title reads "Top merchants · <range.label>".
 - Custom button: when active, two `<input type="date">` controls render inline in the header.
 
@@ -89,16 +104,16 @@ Open `http://localhost:5173/`. Default range: **Month**.
 ## T-DASH-06 — Donut hover tooltip
 
 **Steps**
-1. Hover the spending-mix donut on a colored ring segment.
+1. Hover the spending-mix donut on each colored ring segment in turn.
 
 **Expected**
-- A tooltip appears showing:
+- The donut shows ≥5 colored segments. Top categories on demo data are typically Shopping, Travel, Other, Transport, Dining (order may vary by day).
+- A tooltip appears anchored to the hovered segment showing:
   - color dot
-  - segment name (e.g. `Food`, or `Other` if the categorizer didn't match)
+  - segment name (e.g. `Shopping`, `Travel`, `Transport`, `Dining`, `Health`, `Utilities`, `Subscriptions`, `Groceries`, `Travel`, `Fun`, `Cash`)
   - `₾<value>` (rounded)
   - `<X.X>% of total`
-- Tooltip background follows the active theme.
-- `[unreliable on real data]` — on the developer's installed app, every transaction lands in `Other` because the categorizer doesn't match Georgian merchants. Multi-segment hover can't be exercised until demo mode lands.
+- Tooltip background follows the active theme (toggle dark/light via tweaks panel — tooltip should track).
 
 ---
 
@@ -136,11 +151,13 @@ The donut is a snapshot widget when there's nothing to drill into; only ring cli
 
 **Steps**
 1. Scroll to "Top merchants · <range.label>" card at the bottom.
-2. Click any merchant tile.
+2. Note the leftmost merchant tile's name (likely IKEA in current month due to the ₾4280 outlier when range is Month).
+3. Click that tile.
 
 **Expected**
 - URL changes to `/transactions?merchant=<merchant-name-encoded>&dateFrom=<X>&dateTo=<Y>` where dates reflect the source page's active range.
 - Transactions page renders with the merchant search box pre-filled and the **Custom** range showing the source window.
+- Filtered list shows only that merchant's transactions in the window.
 
 ---
 

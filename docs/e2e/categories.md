@@ -2,7 +2,17 @@
 
 Surface: `client/src/pages/Categories.tsx`.
 
+**Demo mode required.** Confirm via Prereqs in `README.md` before running.
+
 Open `http://localhost:5173/categories`. Default range: **Month**.
+
+## Demo-data baseline (current month)
+
+- ≥9 of the 11 default categories should be populated this month (Subscriptions guaranteed via the recurring subs; Cash via ATM; the rest from the random merchant draw).
+- Largest category by total varies day-to-day but Shopping or Travel is usually #1 due to the IKEA outlier landing in Shopping.
+- Subscriptions category contains: Spotify, Netflix, Claude, GitHub, iCloud+, Figma (any whose `dayOfMonth` ≤ today).
+- Selecting Shopping → IKEA visible in merchant list with avg ≥₾1,000 (because of the outlier).
+- Selecting Subscriptions → 6 merchants ordered by amount: Claude (₾56), Figma (₾42), Netflix (₾32), Spotify (₾17), GitHub (₾11), iCloud+ (₾8).
 
 ---
 

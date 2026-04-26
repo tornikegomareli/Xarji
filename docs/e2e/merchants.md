@@ -2,7 +2,17 @@
 
 Surface: `client/src/pages/Merchants.tsx`.
 
+**Demo mode required.** Confirm via Prereqs in `README.md` before running.
+
 Open `http://localhost:5173/merchants`. Default range: **Month**.
+
+## Demo-data baseline (current month)
+
+- "<N> unique" pill shows ≥20 unique merchants in current month.
+- IKEA at or near the top of the table (₾4,280 single-tx outlier).
+- All recurring subs visible: Spotify, Netflix, Claude, GitHub, iCloud+, Figma — each with `×1` or `×2` count.
+- Pulse Fitness present with `×1` count.
+- Search for `wolt` filters to Wolt rows (≥1 successful payment + 2 declines exist on the demo dataset; declines don't appear in the merchant table since it's payments-only).
 
 ---
 

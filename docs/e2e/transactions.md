@@ -2,8 +2,18 @@
 
 Surface: `client/src/pages/Transactions.tsx`.
 
+**Demo mode required.** Confirm via Prereqs in `README.md` before running.
+
 Open `http://localhost:5173/transactions` (or click "Transactions" in the
 sidebar). Default range: **Month**.
+
+## Demo-data baseline (current month)
+
+- Total ledger across all months: ~1,200+ transactions (sidebar counter).
+- Current month: ~120+ payments + recurring subs + ~5+ failed payments + ~7+ credits.
+- Specific merchant strings present this month: `IKEA` (1), `Pulse Fitness` (1), `Wolt` (≥3 incl. 2 declines), `Tech Co LLC` (2 salary credits), various restaurants / petrol / pharmacies.
+- Bank dropdown options: `SOLO · SOLO`, `TBC · TBC SMS`, `BOG · Main`.
+- Categories dropdown: 11 default categories.
 
 ---
 
@@ -50,11 +60,11 @@ sidebar). Default range: **Month**.
 ## T-TX-04 — URL drill-down ingestion (`?merchant`)
 
 **Steps**
-1. Navigate to `/transactions?merchant=Loan%20repayment` (URL-encode any merchant string from your data; "Loan repayment" works on the dev's installed app).
+1. Navigate to `/transactions?merchant=IKEA`.
 
 **Expected**
-- Search box pre-filled with `Loan repayment`.
-- List filtered to rows whose merchant or rawMessage substring-matches.
+- Search box pre-filled with `IKEA`.
+- List shows exactly 1 row in current month: IKEA ₾4,280 on card `1423`, BOG sender.
 
 ---
 

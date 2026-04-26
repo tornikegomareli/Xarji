@@ -4,6 +4,8 @@ Cross-cutting tests for `useRangeState`, `dateRange.ts`, and the URL-param
 contract every page reads. These exercise invariants that aren't owned by
 any one page — they live across the whole app.
 
+**Demo mode required.** Confirm via Prereqs in `README.md` before running.
+
 Run this file in addition to the page-specific files when changing
 `client/src/lib/dateRange.ts` or `client/src/hooks/useRangeState.ts`.
 
