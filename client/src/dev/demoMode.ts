@@ -3,6 +3,8 @@
 // on `import.meta.env.DEV` so production builds tree-shake this module
 // out entirely.
 
+declare const __XARJI_DEMO_ALLOWED__: boolean;
+
 const STORAGE_KEY = "xarji-demo-mode";
 
 export type DemoSeed = "default" | "empty";
@@ -52,7 +54,10 @@ let resolved = false;
 function resolve(): DemoSeed | null {
   if (resolved) return cached;
   resolved = true;
-  if (!import.meta.env.DEV) {
+  // Two independent kill-switches: (a) the Vite-rewritten DEV literal,
+  // (b) the build-time `__XARJI_DEMO_ALLOWED__` define. Either being
+  // false in a production build short-circuits the entire demo path.
+  if (!import.meta.env.DEV || !__XARJI_DEMO_ALLOWED__) {
     cached = null;
     return cached;
   }

@@ -84,6 +84,19 @@ mkdir -p "$BUILD_DIR" "$RELEASE_DIR"
 log "Building client (bun)"
 (cd client && bun install --frozen-lockfile && bun run build)
 
+log "Verifying demo-mode strings did not leak into the production bundle"
+# Belt-and-braces: vite's `import.meta.env.DEV` and the
+# `__XARJI_DEMO_ALLOWED__` define are both rewritten to literal `false`
+# in `vite build`, which lets Rollup tree-shake the entire `client/src/dev/`
+# tree out. If a future refactor breaks the gate, demo data could ship
+# to end users — fail the DMG build immediately if any of the canary
+# strings appear in the compiled bundle.
+if grep -rE "xarji-demo-mode|__XARJI_DEMO_ALLOWED__:true|buildDemoDataset|makeDemoDb" "$REPO_ROOT/client/dist/" >/dev/null 2>&1; then
+  log "FAIL: demo-mode strings present in production bundle"
+  grep -rE "xarji-demo-mode|__XARJI_DEMO_ALLOWED__:true|buildDemoDataset|makeDemoDb" "$REPO_ROOT/client/dist/" || true
+  exit 1
+fi
+
 log "Embedding client assets into service"
 bun run "$REPO_ROOT/scripts/embed-assets.ts"
 
