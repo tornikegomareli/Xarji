@@ -83,8 +83,19 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThread?.id, activeThread?.autoRun]);
 
+  // Autoscroll-pinning rule: stick to the bottom only when the user is
+  // already near it. The earlier `[messages?.length, busy]` deps missed
+  // streaming token updates (length stayed the same as deltas appended);
+  // switching to `[messages, busy]` fixed that but yanked the user back
+  // every time they tried to scroll up to read prior context. This
+  // version reads the current scroll position before deciding, so the
+  // user can scroll up freely during a streaming response and only the
+  // already-pinned-to-bottom case follows the latest token.
+  const isAtBottomRef = useRef(true);
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const node = scrollRef.current;
+    if (!node) return;
+    if (isAtBottomRef.current) node.scrollTop = node.scrollHeight;
   }, [activeThread?.messages, busy]);
 
   const switchTo = (id: string) => {
@@ -603,6 +614,13 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
         ) : (
           <div
             ref={scrollRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              // Within 60px of the bottom counts as "pinned" so a tiny
+              // overshoot from a streaming token doesn't unstick it.
+              const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+              isAtBottomRef.current = distanceFromBottom < 60;
+            }}
             style={{
               flex: 1,
               overflowY: "auto",

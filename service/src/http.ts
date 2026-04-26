@@ -228,7 +228,15 @@ export function startHttpServer(opts: HttpServerOptions): HttpServerHandle {
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: opts.port,
-    idleTimeout: 60,
+    // 0 = no socket idle cutoff. Required for `/api/ai/stream`, which
+    // returns a long-lived SSE response that can sit silent for >60s
+    // during a slow upstream LLM call or a multi-step tool loop with
+    // no heartbeat between events. The earlier 60s default would cut
+    // those streams mid-response with no retry signal to the client.
+    // Localhost-only service with bounded clients (just the dashboard
+    // tab + the menu-bar app), so the historical "reclaim idle sockets"
+    // motivation doesn't apply.
+    idleTimeout: 0,
     async fetch(req) {
       const url = new URL(req.url);
       const path = url.pathname;
