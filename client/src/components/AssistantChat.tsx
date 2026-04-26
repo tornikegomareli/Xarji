@@ -232,7 +232,8 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
         gridTemplateColumns: "260px 1fr",
         gap: 0,
         flex: 1,
-        minHeight: 720,
+        height: "100%",
+        minHeight: 0,
         background: T.panel,
         borderRadius: T.rXl,
         border: `1px solid ${T.line}`,
@@ -404,7 +405,7 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
         </div>
       </aside>
 
-      <section style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <section style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
         <div
           style={{
             display: "flex",
@@ -637,6 +638,17 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowUp" && !e.shiftKey) {
+                  const userMessages = (activeThread?.messages ?? []).filter((m) => m.role === "user");
+                  if (userMessages.length === 0) return;
+                  const lastBlock = userMessages[userMessages.length - 1].blocks[0];
+                  if (lastBlock?.kind === "text") {
+                    e.preventDefault();
+                    setInput(lastBlock.text);
+                  }
+                }
+              }}
               placeholder={busy ? "Thinking…" : "Ask anything — set a budget, plan savings, find unused subscriptions…"}
               disabled={busy}
               style={{
