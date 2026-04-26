@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTheme, useViewport } from "../ink/theme";
 import { Card, CardLabel, PageHeader } from "../ink/primitives";
@@ -109,7 +109,15 @@ export function Transactions() {
   }, [filtered]);
 
   const dayKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a));
-  const selected = selectedId ? allTx.find((t) => t.id === selectedId) : null;
+  // Resolve the side panel from `filtered`, not `allTx`. If the active
+  // filters no longer contain the selection, drop it so the panel doesn't
+  // contradict the visible list.
+  const selected = selectedId ? filtered.find((t) => t.id === selectedId) : null;
+  useEffect(() => {
+    if (selectedId && !filtered.some((t) => t.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [filtered, selectedId]);
 
   const bankOptions = senders.length > 0
     ? senders.map((s) => ({ id: s.senderId, name: s.displayName }))

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme, useViewport } from "../ink/theme";
 import { Card, CardLabel, CardTitle, LinkBtn, PageHeader } from "../ink/primitives";
@@ -50,6 +50,15 @@ export function Categories() {
 
   const total = cats.reduce((s, c) => s + c.total, 0);
   const [selected, setSelected] = useState<string | null>(null);
+
+  // Drop a stale selection when the active range no longer contains it,
+  // so the right-hand pane never keeps rendering an empty category that
+  // isn't even shown in the left list anymore.
+  useEffect(() => {
+    if (selected && !cats.some((c) => c.cat === selected)) {
+      setSelected(null);
+    }
+  }, [cats, selected]);
 
   const selectedId = selected || cats[0]?.cat;
   const selCat = DEFAULT_CATEGORIES.find((c) => c.id === selectedId);

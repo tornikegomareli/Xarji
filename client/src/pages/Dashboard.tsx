@@ -13,7 +13,7 @@ import { previousRange, rangeToDateParams } from "../lib/dateRange";
 import { formatCompact, formatLocalDay } from "../ink/format";
 import { DEFAULT_CATEGORIES } from "../lib/utils";
 import { useCategorizer } from "../hooks/useCategorizer";
-import { isWithinInterval, format, endOfMonth } from "date-fns";
+import { isWithinInterval, endOfMonth, differenceInCalendarDays } from "date-fns";
 
 export function Dashboard() {
   const T = useTheme();
@@ -119,10 +119,21 @@ export function Dashboard() {
   }, [payments, failedPayments, credits, getCategory]);
 
   const positive = stats.totalChange > 0;
-  const dayNum = now.getDate();
+  // Day count comes from the active range. For a Month-with-future-days the
+  // range still extends to month-end, but the user has only "lived" up to
+  // today, so cap the count at today when the range straddles `now` —
+  // showing "30 days · 9 transactions" on day 8 of April reads as if every
+  // day was empty when in fact most haven't happened yet.
+  const rangeDays = differenceInCalendarDays(range.end, range.start) + 1;
+  const elapsedInRange = now > range.end
+    ? rangeDays
+    : now < range.start
+    ? 0
+    : differenceInCalendarDays(now, range.start) + 1;
+  const dayNum = Math.max(1, Math.min(rangeDays, elapsedInRange));
   const hour = now.getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const monthTitle = format(now, "MMMM, 'at a glance'");
+  const rangeTitle = `${range.label}, at a glance`;
 
   const monthShort = Math.round(stats.total).toLocaleString("en-US");
   const monthDecimals = stats.total.toFixed(2).split(".")[1];
@@ -132,7 +143,7 @@ export function Dashboard() {
     <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap, height: "100%" }}>
       <PageHeader
         eyebrow={`${greeting}`}
-        title={monthTitle}
+        title={rangeTitle}
         {...rangeProps}
       />
 
@@ -325,7 +336,7 @@ export function Dashboard() {
                 size={200}
                 thickness={28}
                 gap={4}
-                centerLabel={format(now, "MMM").toUpperCase()}
+                centerLabel={monthShortName}
                 centerValue={"₾" + formatCompact(stats.total)}
                 centerColor={T.text}
                 labelFont={T.sans}
@@ -384,7 +395,7 @@ export function Dashboard() {
       {/* Top merchants */}
       <Card pad="20px 24px">
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-          <CardTitle>Top merchants · {format(now, "MMMM")}</CardTitle>
+          <CardTitle>Top merchants · {range.label}</CardTitle>
           <LinkBtn>Explore →</LinkBtn>
         </div>
         {topMerchants.length === 0 ? (
