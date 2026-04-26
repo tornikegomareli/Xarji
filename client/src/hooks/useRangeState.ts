@@ -19,10 +19,22 @@ export interface UseRangeStateResult {
   props: RangeStateProps;
 }
 
-export function useRangeState(initial: RangeKey = "Month"): UseRangeStateResult {
-  const [active, setActive] = useState<RangeKey>(initial);
-  const [customStart, setCustomStart] = useState("");
-  const [customEnd, setCustomEnd] = useState("");
+export interface UseRangeStateOptions {
+  /** Pre-fill custom dates and switch to "Custom" on mount. Used by drill-down
+   *  links that pass `?dateFrom=…&dateTo=…` so the user lands on the same
+   *  window the chart bar represented. Both must be YYYY-MM-DD. */
+  customInitial?: { start: string; end: string };
+}
+
+export function useRangeState(
+  initial: RangeKey = "Month",
+  options?: UseRangeStateOptions
+): UseRangeStateResult {
+  const customInitial = options?.customInitial;
+  const useCustom = !!(customInitial && customInitial.start && customInitial.end);
+  const [active, setActive] = useState<RangeKey>(useCustom ? "Custom" : initial);
+  const [customStart, setCustomStart] = useState(useCustom ? customInitial!.start : "");
+  const [customEnd, setCustomEnd] = useState(useCustom ? customInitial!.end : "");
   // `clockTick` advances at the next local-midnight boundary so a
   // long-lived dashboard tab doesn't keep showing yesterday's "Today"
   // (or the previous month's "Month") after the calendar rolls over.

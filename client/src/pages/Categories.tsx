@@ -10,8 +10,8 @@ import { DEFAULT_CATEGORIES, type InkCategory } from "../lib/utils";
 import { useCategorizer } from "../hooks/useCategorizer";
 import { useRangeState } from "../hooks/useRangeState";
 import { isInRange } from "../lib/dateRange";
-import { formatCompact, monthKey } from "../ink/format";
-import { format } from "date-fns";
+import { formatCompact, formatLocalDay, monthKey } from "../ink/format";
+import { endOfMonth, format } from "date-fns";
 
 interface CatAgg {
   cat: string;
@@ -243,6 +243,18 @@ export function Categories() {
                     showAxes={false}
                     cornerRadius={10}
                     padding={{ top: 8, right: 4, bottom: 22, left: 4 }}
+                    onBucketClick={(_d, i) => {
+                      const key = catTrend.keys[i];
+                      if (!key || !selectedId) return;
+                      const [y, m] = key.split("-").map(Number);
+                      const start = new Date(y, m - 1, 1);
+                      const end = endOfMonth(start);
+                      navigate(
+                        `/transactions?category=${encodeURIComponent(selectedId)}&dateFrom=${formatLocalDay(
+                          start.getTime()
+                        )}&dateTo=${formatLocalDay(end.getTime())}`
+                      );
+                    }}
                   />
                   <div
                     style={{
@@ -281,7 +293,29 @@ export function Categories() {
                 {selMerchants.slice(0, 10).map((m) => {
                   const maxT = selMerchants[0]?.total || 1;
                   return (
-                    <div key={m.merchant} style={{ padding: "10px 0", borderBottom: `1px solid ${T.line}` }}>
+                    <button
+                      key={m.merchant}
+                      onClick={() => {
+                        const params = new URLSearchParams();
+                        if (selectedId) params.set("category", selectedId);
+                        params.set("merchant", m.merchant);
+                        navigate(`/transactions?${params.toString()}`);
+                      }}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        padding: "10px 0",
+                        borderTop: 0,
+                        borderLeft: 0,
+                        borderRight: 0,
+                        borderBottom: `1px solid ${T.line}`,
+                        background: "transparent",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        color: "inherit",
+                        font: "inherit",
+                      }}
+                    >
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, gap: 12, alignItems: "baseline" }}>
                         <span
                           style={{
@@ -315,7 +349,7 @@ export function Categories() {
                       <div style={{ fontSize: 10, color: T.dim, fontFamily: T.mono, marginTop: 4 }}>
                         ×{m.count} · avg ₾{Math.round(m.total / Math.max(1, m.count))}
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>

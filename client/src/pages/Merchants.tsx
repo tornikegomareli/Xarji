@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTheme, useViewport } from "../ink/theme";
 import { Card, PageHeader } from "../ink/primitives";
 import { useConvertedPayments } from "../hooks/useTransactions";
@@ -9,6 +10,7 @@ import { isInRange } from "../lib/dateRange";
 export function Merchants() {
   const T = useTheme();
   const vp = useViewport();
+  const navigate = useNavigate();
   const { range, props: rangeProps } = useRangeState("Month");
   const { payments } = useConvertedPayments();
   const { getCategory } = useCategorizer();
@@ -125,14 +127,24 @@ export function Merchants() {
               const cat = getCategory(m.merchant, m.rawMerchant);
               const pct = (m.total / Math.max(1, total)) * 100;
               return (
-                <div
+                <button
                   key={m.merchant}
+                  onClick={() => navigate(`/transactions?merchant=${encodeURIComponent(m.merchant)}`)}
                   style={{
                     display: "grid",
                     gridTemplateColumns: cols,
                     padding: "13px 24px",
+                    borderTop: 0,
+                    borderLeft: 0,
+                    borderRight: 0,
                     borderBottom: `1px solid ${T.line}`,
                     alignItems: "center",
+                    width: "100%",
+                    background: "transparent",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    color: "inherit",
+                    font: "inherit",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
@@ -216,7 +228,7 @@ export function Merchants() {
                   >
                     ₾{Math.round(m.total)}
                   </div>
-                </div>
+                </button>
               );
             })
           )}

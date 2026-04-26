@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTheme, useViewport, type InkTheme } from "../ink/theme";
 import { Card, CardLabel, CardTitle, Pill, LiveDot, LinkBtn, PageHeader } from "../ink/primitives";
 import { AreaChart, Donut } from "../ink/charts";
@@ -9,14 +10,15 @@ import { useMonthlyTrend } from "../hooks/useMonthlyTrend";
 import { useCredits, useRangeCredits } from "../hooks/useCredits";
 import { useRangeState } from "../hooks/useRangeState";
 import { previousRange } from "../lib/dateRange";
-import { formatCompact } from "../ink/format";
+import { formatCompact, formatLocalDay } from "../ink/format";
 import { DEFAULT_CATEGORIES } from "../lib/utils";
 import { useCategorizer } from "../hooks/useCategorizer";
-import { isWithinInterval, format } from "date-fns";
+import { isWithinInterval, format, endOfMonth } from "date-fns";
 
 export function Dashboard() {
   const T = useTheme();
   const vp = useViewport();
+  const navigate = useNavigate();
   const now = new Date();
   const { range, props: rangeProps } = useRangeState("Month");
   const prevPeriod = useMemo(() => previousRange(range), [range]);
@@ -240,6 +242,16 @@ export function Dashboard() {
                 showAxes={false}
                 cornerRadius={14}
                 padding={{ top: 6, right: 2, bottom: 22, left: 2 }}
+                onBucketClick={(_d, i) => {
+                  const bucket = trend[i];
+                  if (!bucket) return;
+                  const [y, m] = bucket.key.split("-").map(Number);
+                  const start = new Date(y, m - 1, 1);
+                  const end = endOfMonth(start);
+                  navigate(
+                    `/transactions?dateFrom=${formatLocalDay(start.getTime())}&dateTo=${formatLocalDay(end.getTime())}`
+                  );
+                }}
               />
               <div
                 style={{
@@ -317,6 +329,10 @@ export function Dashboard() {
                 centerValue={"₾" + formatCompact(stats.total)}
                 centerColor={T.text}
                 labelFont={T.sans}
+                onSegmentClick={(_seg, i) => {
+                  const cat = topCats[i];
+                  if (cat) navigate(`/transactions?category=${encodeURIComponent(cat.meta.id)}`);
+                }}
               />
               <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10, marginTop: 22 }}>
                 {topCats.map((c) => {
@@ -380,13 +396,18 @@ export function Dashboard() {
             {topMerchants.map((m) => {
               const cat = getCategory(m.name);
               return (
-                <div
+                <button
                   key={m.name}
+                  onClick={() => navigate(`/transactions?merchant=${encodeURIComponent(m.name)}`)}
                   style={{
                     padding: "14px 14px",
                     background: T.panelAlt,
                     borderRadius: T.rMd,
                     border: `1px solid ${T.line}`,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    color: "inherit",
+                    font: "inherit",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -421,7 +442,7 @@ export function Dashboard() {
                     </div>
                     <div style={{ fontSize: 10, color: T.dim, fontFamily: T.mono }}>×{m.count}</div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

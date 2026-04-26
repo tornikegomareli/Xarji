@@ -20,20 +20,31 @@ export function Transactions() {
   const { failedPayments } = useFailedPayments();
   const { senders } = useBankSenders();
   const { getCategory, categorize: categorizeId } = useCategorizer();
-  const { range, props: rangeProps } = useRangeState("Month");
-
-  // `?category=<id>` pre-selects the category filter on load. Categories
-  // page navigates here with this param when the user clicks "All →" on
-  // a category's recent-transactions card. Values that don't match a
-  // known category id fall through to the "all" default.
+  // Drill-down search params accepted on first paint. Anything that doesn't
+  // match falls through to the unfiltered default — chart drill-downs can
+  // freely add params without breaking the page if a future link mistypes
+  // a key.
+  //   ?category=<id>          — pre-select category filter
+  //   ?merchant=<text>        — pre-fill the search box (substring match)
+  //   ?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
+  //                           — switch range to "Custom" with these dates
   const [searchParams] = useSearchParams();
   const initialCat = (() => {
     const raw = searchParams.get("category");
     if (!raw) return "all";
     return DEFAULT_CATEGORIES.some((c) => c.id === raw) ? raw : "all";
   })();
+  const initialMerchant = searchParams.get("merchant") || "";
+  const initialCustom = (() => {
+    const start = searchParams.get("dateFrom") || "";
+    const end = searchParams.get("dateTo") || "";
+    if (!start || !end) return undefined;
+    return { start, end };
+  })();
 
-  const [search, setSearch] = useState("");
+  const { range, props: rangeProps } = useRangeState("Month", { customInitial: initialCustom });
+
+  const [search, setSearch] = useState(initialMerchant);
   const [bank, setBank] = useState("all");
   const [cat, setCat] = useState(initialCat);
   const [kind, setKind] = useState<TxKind>("all");

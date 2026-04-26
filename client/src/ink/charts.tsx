@@ -34,6 +34,7 @@ export function AreaChart({
   formatTooltipValue,
   cornerRadius = 0,
   padding = { top: 18, right: 12, bottom: 22, left: 42 },
+  onBucketClick,
 }: {
   data: AreaDatum[];
   width?: number;
@@ -50,6 +51,9 @@ export function AreaChart({
   formatTooltipValue?: (n: number) => string;
   cornerRadius?: number;
   padding?: { top: number; right: number; bottom: number; left: number };
+  /** Fires when the user clicks a bucket point. Receives the datum and its
+   *  zero-based index, so the consumer can navigate to a date-filtered view. */
+  onBucketClick?: (datum: AreaDatum, index: number) => void;
 }) {
   const gradientId = React.useId();
   const clipId = React.useId();
@@ -68,10 +72,23 @@ export function AreaChart({
     return "";
   };
 
+  const handleClick = onBucketClick
+    ? (state: unknown) => {
+        const s = state as
+          | { activeTooltipIndex?: number | string | null; activePayload?: Array<{ payload?: AreaDatum }> }
+          | null;
+        if (!s) return;
+        const idx = typeof s.activeTooltipIndex === "number" ? s.activeTooltipIndex : Number(s.activeTooltipIndex);
+        if (!Number.isFinite(idx)) return;
+        const datum = s.activePayload?.[0]?.payload;
+        if (datum) onBucketClick(datum, idx);
+      }
+    : undefined;
+
   return (
-    <div style={{ width, height, maxWidth: "100%" }}>
+    <div style={{ width, height, maxWidth: "100%", cursor: onBucketClick ? "pointer" : undefined }}>
       <ResponsiveContainer width="100%" height="100%">
-        <RAreaChart data={data} margin={chartMargin}>
+        <RAreaChart data={data} margin={chartMargin} onClick={handleClick}>
           {fill && (
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -229,6 +246,7 @@ export function Donut({
   centerColor = "#333",
   labelFont = "ui-monospace, monospace",
   formatTooltipValue,
+  onSegmentClick,
 }: {
   segments: DonutSegment[];
   size?: number;
@@ -239,6 +257,11 @@ export function Donut({
   centerColor?: string;
   labelFont?: string;
   formatTooltipValue?: (n: number) => string;
+  /** Fires when the user clicks a segment. Receives the original segment
+   *  (so the consumer can read its `name`) plus its index in the `segments`
+   *  array. The empty placeholder shown when every value is 0 does not
+   *  fire this. */
+  onSegmentClick?: (segment: DonutSegment, index: number) => void;
 }) {
   const inner = Math.max(0, size / 2 - thickness);
   const outer = size / 2;
@@ -250,8 +273,16 @@ export function Donut({
   const hasData = data.some((d) => d.value > 0);
   const total = data.reduce((s, d) => s + d.value, 0) || 1;
 
+  const clickable = hasData && !!onSegmentClick;
+  const handleSliceClick = clickable
+    ? (_: unknown, index: number) => {
+        const seg = segments[index];
+        if (seg) onSegmentClick!(seg, index);
+      }
+    : undefined;
+
   return (
-    <div style={{ position: "relative", width: size, height: size }}>
+    <div style={{ position: "relative", width: size, height: size, cursor: clickable ? "pointer" : undefined }}>
       <PieChart width={size} height={size}>
         <Pie
           data={hasData ? data : [{ name: "empty", value: 1, color: "transparent" }]}
@@ -265,6 +296,7 @@ export function Donut({
           endAngle={-270}
           stroke="none"
           isAnimationActive={false}
+          onClick={handleSliceClick}
         >
           {(hasData ? data : [{ color: "transparent" }]).map((d, i) => (
             <Cell key={i} fill={d.color} />
