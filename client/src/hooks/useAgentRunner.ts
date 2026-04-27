@@ -11,6 +11,7 @@ import { useCategorizer } from "./useCategorizer";
 import { getProviderClient } from "../lib/ai/provider";
 import { runAgent, type AssistantEvent } from "../lib/ai/orchestrator";
 import { READONLY_TOOLS } from "../lib/ai/tools/readonly";
+import { WRITE_TOOLS } from "../lib/ai/tools/write";
 import type { AITool } from "../lib/ai/tools/types";
 import type { AICoreMessage } from "../lib/ai/types";
 import type { AIConfig } from "../lib/aiConfig";
@@ -20,7 +21,7 @@ import type { AIConfig } from "../lib/aiConfig";
 // (b) appends it to the "Available tools" section of the system
 // prompt — see buildSystemPrompt() below. Adding a NEW registry?
 // Concatenate it into ALL_TOOLS so both effects happen.
-const ALL_TOOLS: AITool[] = [...READONLY_TOOLS];
+const ALL_TOOLS: AITool[] = [...READONLY_TOOLS, ...WRITE_TOOLS];
 
 const BASE_SYSTEM_PROMPT = `You are Xarji's AI Assistant, a personal finance assistant embedded inside the Xarji dashboard.
 
@@ -48,7 +49,12 @@ Tool usage:
 - Do not guess specific financial numbers from memory.
 - Do not invent transactions, merchants, totals, dates, categories, or exchange rates.
 - For purely conversational, educational, or general budgeting questions, a tool call is not required.
-- Tools are read-only. Do not claim that you changed, deleted, categorized, edited, or created anything.
+
+Write tools:
+- Some tools mutate the user's data (e.g. \`create_category\`).
+- Auto-apply tools (those whose description says "AUTO-APPLIES") execute immediately. After calling one successfully, you may tell the user it's done — describe what was created/changed.
+- If a write tool fails (e.g. duplicate name), the error result tells you why. Use that to inform the user clearly and propose the next step.
+- Do not claim a change happened unless the corresponding tool call succeeded.
 
 Answer style:
 - Be concise and clear.

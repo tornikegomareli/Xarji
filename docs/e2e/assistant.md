@@ -112,3 +112,46 @@ Open `http://localhost:5173/assistant`.
 - The input row at the bottom stays anchored above the viewport bottom (does NOT scroll off-screen with the content).
 - The sidebar and the conversations list (left column) are also independently scrollable.
 - The browser's outer scrollbar does NOT appear — the assistant page still fits within the viewport.
+
+---
+
+## Write tools (issue #29 / Phase 1)
+
+These tests cover the assistant's write-tool surface. Phase 1.0 ships `create_category` only — auto-apply, no confirm card. Phase 1.1 adds `apply_category_override` and `remove_category_override` with the confirm-card UX.
+
+### T-AI-07 — `create_category` auto-applies
+
+**Why this exists:** Pins the auto-apply policy decided in #29: empty category creation is reversible, so it executes immediately without a confirm step.
+
+**Steps**
+1. Start a fresh assistant conversation.
+2. Send: `"Make a new category called Coffee shops."`
+3. Wait for the response.
+4. Open `/categories` in another tab (or navigate after the response).
+
+**Expected**
+- The chat shows a `TOOL CALL create_category` pill (succeeded, sub-second).
+- The assistant's text response says something like \"Created the Coffee shops category. You can now move transactions into it.\" (exact wording will drift; just confirm it tells the user the action is done).
+- `/categories` left column lists `Coffee shops` somewhere in the category list.
+- No transactions are reassigned (the new category is empty until the user moves transactions into it via the override tool — coming in Phase 1.1).
+- The category persists across page reloads.
+
+### T-AI-08 — `create_category` rejects duplicate name
+
+**Steps**
+1. After T-AI-07 (or with a pre-existing `Coffee shops` category), send: `"Make a Coffee shops category."`
+
+**Expected**
+- The tool call returns an error result (visible as the `TOOL CALL` pill — the chat shows the error inline if the model surfaces it).
+- The assistant's text response acknowledges the existing category instead of pretending to create another one (e.g. \"You already have a Coffee shops category. Want me to move transactions into it?\").
+- Duplicate-detection is case-insensitive: `"Coffee Shops"`, `"coffee shops"`, `"COFFEE SHOPS"` all collide with `"Coffee shops"`.
+
+### T-AI-09 — Multi-write turn (multiple `create_category` in one response)
+
+**Steps**
+1. Send: `"Make three categories: Pet care, Dog food, Vet bills."`
+
+**Expected**
+- The assistant emits three `TOOL CALL create_category` pills in sequence.
+- All three categories appear in `/categories`.
+- The assistant's text response confirms all three were created.
