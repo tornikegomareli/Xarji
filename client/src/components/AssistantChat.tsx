@@ -764,7 +764,7 @@ export function AssistantChat({ config, onClear }: { config: AIConfig; onClear: 
             <span>
               ↵ send · ⇧↵ newline · <span style={{ color: T.muted }}>⌘K</span> spotlight
             </span>
-            <span>connected to {provider.name} · keys never leave this Mac</span>
+            <span>connected to {provider.name}</span>
           </div>
         </div>
       </section>
