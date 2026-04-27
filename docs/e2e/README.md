@@ -114,19 +114,20 @@ and update them in the same commit.
 
 | File | Surface | Last verified |
 |---|---|---|
-| [dashboard.md](dashboard.md) | `client/src/pages/Dashboard.tsx` — hero card, donut, 9-month trend, top-merchant tiles | 2026-04-27 (PR #23) |
+| [dashboard.md](dashboard.md) | `client/src/pages/Dashboard.tsx` — hero, donut, 9-month trend, top-merchant tiles, wheel-scroll regression guard | 2026-04-27 (PR #27) |
 | [transactions.md](transactions.md) | `client/src/pages/Transactions.tsx` — filters, day groups, side panel, URL drill-down ingestion | 2026-04-27 (PR #23) |
 | [categories.md](categories.md) | `client/src/pages/Categories.tsx` — left donut + list, per-cat detail, per-cat trend, merchant rows | 2026-04-27 (PR #23) |
 | [merchants.md](merchants.md) | `client/src/pages/Merchants.tsx` — table, search, drill-down rows | 2026-04-27 (PR #23) |
 | [income.md](income.md) | `client/src/pages/Income.tsx` — hero, income trend, ledger | 2026-04-27 (PR #23) |
 | [manage.md](manage.md) | `client/src/pages/Settings.tsx` mounted at `/manage` — Sync now button, CSRF, partial-failure UI | 2026-04-27 (PR #22) |
+| [assistant.md](assistant.md) | `AssistantChat.tsx` + orchestrator — empty state, streaming, multi-turn memory, autoscroll, long-loop survival | 2026-04-27 (PR #27) |
 | [ranges.md](ranges.md) | Cross-cutting `useRangeState` + `dateRange.ts` invariants and Codex-fix regressions | 2026-04-27 (PR #23) |
 
 ## Test ID convention
 
 Each test has an ID `T-<AREA>-<NN>`:
 
-- `AREA` = uppercase short tag: `DASH`, `TX`, `CAT`, `MERCH`, `INC`, `RANGE`.
+- `AREA` = uppercase short tag: `DASH`, `TX`, `CAT`, `MERCH`, `INC`, `MGT`, `AI`, `RANGE`.
 - `NN` = two-digit zero-padded sequence within the file. Numbers don't get
   reused — if you delete a test, leave a gap (or repurpose the ID with a
   comment) so old PR references still make sense.

@@ -184,3 +184,20 @@ The donut is a snapshot widget when there's nothing to drill into; only ring cli
 - "You spent ₾0", "0 transactions", subline shows the day count for the range.
 - Spending mix card shows "No spending data yet."
 - Today & recent shows whatever existing recent activity (this card isn't range-scoped).
+
+---
+
+## T-DASH-12 — Wheel scroll works on Overview
+
+**Why this exists:** PR #20 once set the Layout shell to `height: 100vh` + `<main>` to `overflow: auto`, which silently killed mouse-wheel scrolling on every page that doesn't have an inner scroll container. Pinning this test prevents regressing into the same shape again.
+
+**Steps**
+1. Navigate to `http://localhost:5173/` (Overview).
+2. Confirm there's content below the fold (Top merchants tiles or further sections should be partially or fully out of viewport at default browser size).
+3. Hover the mouse over the empty space between cards (NOT over a chart or donut — Recharts can intercept wheel events on its own surfaces).
+4. Scroll the mouse wheel down.
+
+**Expected**
+- The page scrolls. The Top merchants row (or whatever is below the fold) comes into view.
+- Two-finger trackpad scroll behaves identically.
+- This works regardless of cursor position, INCLUDING over the sidebar.
