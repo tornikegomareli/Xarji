@@ -99,6 +99,98 @@ Open `http://localhost:5173/assistant`.
 
 ---
 
+## Write tools (issue #29)
+
+These tests cover the assistant's write-tool surface. v1 ships two CREATE-type
+tools (`create_category`, `apply_category_override`), both auto-apply. EDIT
+and DELETE happen via UI affordances (the × button on `/categories` and the
+"Clear override" button in `CategoryPicker` on `/transactions`).
+
+### T-AI-07 — `create_category` auto-applies and renders end-to-end
+
+**Steps**
+1. Start a fresh assistant conversation.
+2. Send: `"Make a new category called Coffee shops."`
+3. After the response, navigate to `/categories`.
+4. After that, navigate to `/transactions` and open the category dropdown filter.
+
+**Expected**
+- Chat shows a `TOOL CALL create_category` pill (sub-second).
+- Assistant's text response confirms the category was created (exact wording drifts).
+- `/categories` left list shows `Coffee shops` with a small × delete button next to its row (it's deletable because `isDefault: false`).
+- `/transactions` category dropdown includes `Coffee shops` as a filter option.
+- The category persists across page reloads.
+
+### T-AI-08 — `create_category` rejects duplicate names
+
+**Steps**
+1. After T-AI-07 (or with `Coffee shops` already created), send: `"Make a coffee shops category."`
+
+**Expected**
+- The tool errors. The model surfaces the existing category instead of creating a parallel one (e.g. "You already have a Coffee shops category — want me to move transactions into it instead?").
+- Duplicate detection is case-insensitive: `"Coffee Shops"`, `"coffee shops"`, `"COFFEE SHOPS"` all collide with `"Coffee shops"`.
+- Default categories also collide: `"Make a Groceries category"` should fail with the same response.
+
+### T-AI-09 — `apply_category_override` moves a merchant
+
+**Pre:** at least one `Coffee shops` category exists (run T-AI-07 first if not).
+
+**Steps**
+1. Send: `"Move all my Carrefour transactions to Coffee shops."` (substitute any merchant present in your demo data — Carrefour, Spotify, IKEA, etc.)
+2. Wait for the response.
+3. Navigate to `/transactions`.
+4. Filter by category = Coffee shops.
+
+**Expected**
+- The model calls `apply_category_override` once with `merchant=Carrefour, categoryId=<coffee-shops-id>`.
+- The tool result includes `categoryName: "Coffee shops"` and `replacedExistingOverride: false`.
+- `/transactions` filtered by Coffee shops shows all the Carrefour rows that previously categorised as Groceries.
+- Spending mix on `/` (Dashboard) re-allocates: Coffee shops now has the Carrefour total, Groceries has correspondingly less.
+
+### T-AI-10 — `apply_category_override` is reversible via the UI
+
+**Pre:** T-AI-09 just ran (Carrefour is overridden to Coffee shops).
+
+**Steps**
+1. Open `/transactions`. Find any Carrefour row.
+2. Click the merchant's category badge.
+3. Click "Clear override · use the auto category".
+4. Refresh.
+
+**Expected**
+- The CategoryPicker dropdown now lists `Coffee shops` alongside the default categories (the picker uses `allCategories` per the foundation commit).
+- After clicking "Clear override", every Carrefour row reverts to "Groceries" (the auto-detected category).
+- Spending mix on `/` matches what it was before T-AI-09.
+
+### T-AI-11 — Delete a category from `/categories`
+
+**Pre:** at least one user-created category exists (run T-AI-07 if not). Bonus: an override targeting that category exists (run T-AI-09 first).
+
+**Steps**
+1. Open `/categories`.
+2. Click the × button on the user-created category row.
+3. Confirm the dialog.
+
+**Expected**
+- The category disappears from the left list.
+- Any merchant overrides pointing at the deleted category are also cleaned up — the affected merchants revert to their auto-detected category in `/transactions`.
+- The dialog message reflects what's about to happen: empty category vs. N transactions affected.
+- Default categories (those with `isDefault: true` in DB or hardcoded in `DEFAULT_CATEGORIES`) do NOT show a × button.
+
+### T-AI-12 — Multi-write turn (multiple `apply_category_override` in one response)
+
+**Pre:** `Coffee shops` exists.
+
+**Steps**
+1. Send: `"Move my Starbucks, Coffee LAB, and Skola transactions to Coffee shops."` (substitute three merchants present in your data).
+
+**Expected**
+- The assistant emits 3 `TOOL CALL apply_category_override` pills in sequence.
+- All three merchants now show "Coffee shops" in `/transactions`.
+- If a merchant doesn't exist in the data, the tool still succeeds (it creates an override row even if no transactions currently match) — the model should tell the user how many transactions are now mapped (0 if the merchant has no transactions yet).
+
+---
+
 ## T-AI-06 — Side-panel scrolling works (Layout-overflow regression guard)
 
 **Why this exists:** PR #20 set Layout's `<main>` to `overflow: auto` to give the chat a bounded viewport, then PR #27 reverted that to keep document scroll working everywhere else, and instead wrapped only the assistant page in `calc(100vh - 56px)`. This test confirms both the chat scroller AND the input row layout still work after the rewrap.
