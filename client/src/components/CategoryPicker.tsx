@@ -10,6 +10,8 @@ import { useTheme, type InkTheme } from "../ink/theme";
 import { type InkCategory } from "../lib/utils";
 import { useMerchantOverrides } from "../hooks/useMerchantOverrides";
 import { useCategorizer } from "../hooks/useCategorizer";
+import { useCategoryActions } from "../hooks/useCategories";
+import { pickCategoryDefaults } from "../lib/categoryDefaults";
 
 export function CategoryPicker({
   merchant,
@@ -24,7 +26,17 @@ export function CategoryPicker({
   const ref = useRef<HTMLDivElement | null>(null);
   const { byMerchant, setOverride, clearOverride } = useMerchantOverrides();
   const { allCategories } = useCategorizer();
+  const { addCategory } = useCategoryActions();
   const [busy, setBusy] = useState(false);
+  // "creating mode" — user clicked "+ New category" and we render the
+  // inline name input instead of the category list. Keeps the picker
+  // self-contained: no modal, no separate component, no navigation
+  // away from the row the user is editing.
+  const [creating, setCreating] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const draftInputRef = useRef<HTMLInputElement | null>(null);
+
   const hasOverride = !!byMerchant.get(merchant.trim().toLowerCase());
 
   useEffect(() => {
@@ -32,7 +44,16 @@ export function CategoryPicker({
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (creating) {
+          // First Escape exits create mode; second Escape closes the picker.
+          setCreating(false);
+          setDraftName("");
+          setError(null);
+        } else {
+          onClose();
+        }
+      }
     };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
@@ -40,7 +61,13 @@ export function CategoryPicker({
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [onClose, creating]);
+
+  // Auto-focus the draft input when entering creating mode so the user
+  // can type the category name without an extra click.
+  useEffect(() => {
+    if (creating) draftInputRef.current?.focus();
+  }, [creating]);
 
   const pick = async (cat: InkCategory) => {
     if (busy) return;
@@ -64,6 +91,46 @@ export function CategoryPicker({
     }
   };
 
+  const submitNew = async () => {
+    const name = draftName.trim();
+    if (!name) {
+      setError("Name is required.");
+      return;
+    }
+    // Case-insensitive duplicate check against the merged live category
+    // list (DEFAULT_CATEGORIES + DB rows). Mirrors the AI tool's
+    // duplicate handling so the user gets the same constraint
+    // regardless of which channel they came from.
+    const existing = allCategories.find(
+      (c) => c.name.toLowerCase() === name.toLowerCase()
+    );
+    if (existing) {
+      setError(`"${existing.name}" already exists.`);
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const defaults = pickCategoryDefaults(name);
+      const newId = await addCategory({
+        name,
+        color: defaults.color,
+        icon: defaults.icon,
+        isDefault: false,
+      });
+      // Apply the new category as the merchant's override immediately
+      // — that's what the user clicked in for, otherwise they'd have
+      // to do a second pick after creating.
+      await setOverride(merchant, newId);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div
       ref={ref}
@@ -72,7 +139,7 @@ export function CategoryPicker({
         top: "calc(100% + 6px)",
         left: 0,
         zIndex: 100,
-        minWidth: 240,
+        minWidth: 260,
         background: T.panel,
         border: `1px solid ${T.lineStrong}`,
         borderRadius: 12,
@@ -83,48 +150,163 @@ export function CategoryPicker({
         gap: 2,
       }}
     >
-      <div
-        style={{
-          padding: "6px 10px 4px",
-          fontSize: 10,
-          color: T.dim,
-          fontFamily: T.mono,
-          letterSpacing: 0.6,
-          textTransform: "uppercase",
-        }}
-      >
-        Move {merchant} to
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", maxHeight: 280, overflowY: "auto" }}>
-        {allCategories.map((cat) => (
-          <CategoryRow
-            key={cat.id}
-            T={T}
-            cat={cat}
-            active={cat.id === current.id}
-            onPick={pick}
+      {creating ? (
+        <div style={{ padding: 4, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div
+            style={{
+              fontSize: 10,
+              color: T.dim,
+              fontFamily: T.mono,
+              letterSpacing: 0.6,
+              textTransform: "uppercase",
+              padding: "0 6px",
+            }}
+          >
+            New category for {merchant}
+          </div>
+          <input
+            ref={draftInputRef}
+            value={draftName}
+            onChange={(e) => {
+              setDraftName(e.target.value);
+              if (error) setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submitNew();
+              }
+            }}
+            placeholder="e.g. Coffee shops"
+            disabled={busy}
+            style={{
+              padding: "8px 12px",
+              background: T.panelAlt,
+              border: `1px solid ${T.line}`,
+              borderRadius: 8,
+              color: T.text,
+              fontSize: 13,
+              fontFamily: T.sans,
+              outline: "none",
+            }}
           />
-        ))}
-      </div>
-      {hasOverride && (
-        <button
-          onClick={reset}
-          disabled={busy}
-          style={{
-            marginTop: 6,
-            padding: "8px 10px",
-            background: "transparent",
-            border: `1px solid ${T.line}`,
-            borderRadius: 8,
-            color: T.muted,
-            fontSize: 11.5,
-            fontFamily: T.sans,
-            cursor: busy ? "not-allowed" : "pointer",
-            textAlign: "left",
-          }}
-        >
-          Clear override · use the auto category
-        </button>
+          {error && (
+            <div
+              style={{
+                fontSize: 11,
+                color: T.accent,
+                fontFamily: T.sans,
+                padding: "0 6px",
+              }}
+            >
+              {error}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
+            <button
+              onClick={submitNew}
+              disabled={busy || !draftName.trim()}
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                background: busy || !draftName.trim() ? T.panelAlt : T.accent,
+                color: busy || !draftName.trim() ? T.dim : "#fff",
+                border: "none",
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 600,
+                fontFamily: T.sans,
+                cursor: busy || !draftName.trim() ? "not-allowed" : "pointer",
+              }}
+            >
+              {busy ? "Creating…" : "Create + apply"}
+            </button>
+            <button
+              onClick={() => {
+                setCreating(false);
+                setDraftName("");
+                setError(null);
+              }}
+              disabled={busy}
+              style={{
+                padding: "8px 12px",
+                background: "transparent",
+                color: T.muted,
+                border: `1px solid ${T.line}`,
+                borderRadius: 8,
+                fontSize: 12,
+                fontFamily: T.sans,
+                cursor: busy ? "not-allowed" : "pointer",
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div
+            style={{
+              padding: "6px 10px 4px",
+              fontSize: 10,
+              color: T.dim,
+              fontFamily: T.mono,
+              letterSpacing: 0.6,
+              textTransform: "uppercase",
+            }}
+          >
+            Move {merchant} to
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", maxHeight: 280, overflowY: "auto" }}>
+            {allCategories.map((cat) => (
+              <CategoryRow
+                key={cat.id}
+                T={T}
+                cat={cat}
+                active={cat.id === current.id}
+                onPick={pick}
+              />
+            ))}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+            <button
+              onClick={() => setCreating(true)}
+              disabled={busy}
+              style={{
+                padding: "8px 10px",
+                background: "transparent",
+                border: `1px solid ${T.line}`,
+                borderRadius: 8,
+                color: T.text,
+                fontSize: 11.5,
+                fontFamily: T.sans,
+                cursor: busy ? "not-allowed" : "pointer",
+                textAlign: "left",
+              }}
+            >
+              + New category…
+            </button>
+            {hasOverride && (
+              <button
+                onClick={reset}
+                disabled={busy}
+                style={{
+                  padding: "8px 10px",
+                  background: "transparent",
+                  border: `1px solid ${T.line}`,
+                  borderRadius: 8,
+                  color: T.muted,
+                  fontSize: 11.5,
+                  fontFamily: T.sans,
+                  cursor: busy ? "not-allowed" : "pointer",
+                  textAlign: "left",
+                }}
+              >
+                Clear override · use the auto category
+              </button>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

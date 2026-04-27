@@ -24,35 +24,8 @@
 
 import { id } from "@instantdb/react";
 import { db } from "../../instant";
+import { pickCategoryDefaults } from "../../categoryDefaults";
 import type { AITool } from "./types";
-
-const CATEGORY_PALETTE = [
-  "#FF5A3A", // coral
-  "#4BD9A2", // emerald
-  "#6AA3FF", // azure
-  "#E8A05A", // amber
-  "#B38DF7", // violet
-  "#FF7A9E", // rose
-  "#F1B84A", // gold
-  "#6b7280", // slate (matches Other)
-];
-
-const CATEGORY_ICONS = ["◐", "◆", "◉", "✦", "✧", "◇", "✶", "◈"];
-
-/** Pick a deterministic-but-varied default for color/icon when the model
- *  doesn't supply them. The hash is derived from the category name so
- *  re-running create_category with the same name returns the same
- *  visual identity. */
-function pickDefaults(name: string): { color: string; icon: string } {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  }
-  return {
-    color: CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length],
-    icon: CATEGORY_ICONS[hash % CATEGORY_ICONS.length],
-  };
-}
 
 const createCategory: AITool = {
   definition: {
@@ -104,7 +77,7 @@ const createCategory: AITool = {
       );
     }
 
-    const defaults = pickDefaults(name);
+    const defaults = pickCategoryDefaults(name);
     const color = typeof input.color === "string" ? input.color : defaults.color;
     const icon = typeof input.icon === "string" ? input.icon : defaults.icon;
 

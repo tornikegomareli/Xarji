@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useTheme, useViewport } from "../ink/theme";
+import { useTheme, useViewport, type InkTheme } from "../ink/theme";
 import { Card, CardLabel, PageHeader } from "../ink/primitives";
 import { TxRow, type InkTx } from "../ink/TxRow";
+import { CategoryPicker } from "../components/CategoryPicker";
 import { useConvertedPayments, useFailedPayments } from "../hooks/useTransactions";
 import { useBankSenders } from "../hooks/useBankSenders";
 import { useRangeState } from "../hooks/useRangeState";
@@ -18,7 +19,7 @@ export function Transactions() {
   const { payments } = useConvertedPayments();
   const { failedPayments } = useFailedPayments();
   const { senders } = useBankSenders();
-  const { getCategory, categorize: categorizeId, allCategories } = useCategorizer();
+  const { categorize: categorizeId, allCategories } = useCategorizer();
   // Drill-down search params accepted on first paint. Anything that doesn't
   // match falls through to the unfiltered default — chart drill-downs can
   // freely add params without breaking the page if a future link mistypes
@@ -371,20 +372,15 @@ export function Transactions() {
                 : `${currencySymbol(selected.currency)}${(selected.amount ?? 0).toFixed(2)}`}
             </div>
             <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 10 }}>
-              {[
-                ["When", new Date(selected.transactionDate).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })],
-                ["Card", selected.cardLastDigits ? `··${selected.cardLastDigits}` : "—"],
-                ["Bank", selected.bankSenderId],
-                ["Category", getCategory(selected.merchant, selected.rawMerchant).name],
-                selected.kind === "failed"
-                  ? ["Reason", selected.failureReason || "—"]
-                  : ["Points", selected.plusEarned ? `+${selected.plusEarned}` : "—"],
-              ].map(([k, v], i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${T.line}` }}>
-                  <span style={{ fontSize: 12, color: T.muted, fontFamily: T.sans }}>{k}</span>
-                  <span style={{ fontSize: 12.5, color: T.text, fontFamily: T.sans, fontWeight: 600 }}>{v}</span>
-                </div>
-              ))}
+              <DetailRow T={T} k="When" v={new Date(selected.transactionDate).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })} />
+              <DetailRow T={T} k="Card" v={selected.cardLastDigits ? `··${selected.cardLastDigits}` : "—"} />
+              <DetailRow T={T} k="Bank" v={selected.bankSenderId} />
+              <CategoryDetailRow T={T} merchant={selected.merchant} rawMerchant={selected.rawMerchant} />
+              {selected.kind === "failed" ? (
+                <DetailRow T={T} k="Reason" v={selected.failureReason || "—"} />
+              ) : (
+                <DetailRow T={T} k="Points" v={selected.plusEarned ? `+${selected.plusEarned}` : "—"} />
+              )}
             </div>
             <div style={{ marginTop: 18 }}>
               <CardLabel>Raw SMS</CardLabel>
@@ -409,6 +405,80 @@ export function Transactions() {
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+function DetailRow({ T, k, v }: { T: InkTheme; k: string; v: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${T.line}` }}>
+      <span style={{ fontSize: 12, color: T.muted, fontFamily: T.sans }}>{k}</span>
+      <span style={{ fontSize: 12.5, color: T.text, fontFamily: T.sans, fontWeight: 600 }}>{v}</span>
+    </div>
+  );
+}
+
+/**
+ * Special-cased detail-panel row for Category — clicking the value
+ * opens the CategoryPicker anchored to this row, with a "+ Create new
+ * category" inline option. Persists as a per-merchant override (same
+ * model the inline picker uses on the row's category badge).
+ */
+function CategoryDetailRow({
+  T,
+  merchant,
+  rawMerchant,
+}: {
+  T: InkTheme;
+  merchant: string;
+  rawMerchant?: string;
+}) {
+  const { getCategory } = useCategorizer();
+  const [open, setOpen] = useState(false);
+  const cat = getCategory(merchant, rawMerchant);
+  const pickerMerchant = (merchant || rawMerchant || "").trim();
+  const canEdit = pickerMerchant.length > 0;
+
+  return (
+    <div style={{ position: "relative", borderBottom: `1px solid ${T.line}`, paddingBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0 0" }}>
+        <span style={{ fontSize: 12, color: T.muted, fontFamily: T.sans }}>Category</span>
+        <button
+          type="button"
+          onClick={() => canEdit && setOpen((o) => !o)}
+          disabled={!canEdit}
+          title={canEdit ? "Change category for all transactions from this merchant" : "Merchant unknown"}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "4px 8px",
+            border: `1px solid ${T.line}`,
+            borderRadius: 8,
+            background: open ? T.panelAlt : "transparent",
+            color: T.text,
+            fontFamily: T.sans,
+            fontSize: 12.5,
+            fontWeight: 600,
+            cursor: canEdit ? "pointer" : "not-allowed",
+          }}
+        >
+          <span style={{ width: 8, height: 8, borderRadius: 4, background: cat.color }} />
+          {cat.name}
+          {canEdit && (
+            <span style={{ fontSize: 9, color: T.dim, marginLeft: 4 }}>{open ? "▴" : "▾"}</span>
+          )}
+        </button>
+      </div>
+      {open && canEdit && (
+        <div style={{ position: "absolute", right: 0, top: "100%", zIndex: 50 }}>
+          <CategoryPicker
+            merchant={pickerMerchant}
+            current={cat}
+            onClose={() => setOpen(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
