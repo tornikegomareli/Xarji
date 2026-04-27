@@ -24,7 +24,6 @@
 
 import { id } from "@instantdb/react";
 import { db } from "../../instant";
-import { DEFAULT_CATEGORIES } from "../../utils";
 import type { AITool } from "./types";
 
 const CATEGORY_PALETTE = [
@@ -89,21 +88,16 @@ const createCategory: AITool = {
       throw new Error("`name` is required and must be a non-empty string.");
     }
 
-    // Reject duplicate names case-insensitively. The user can have a
-    // "Coffee" category and not see a confusing "Coffee" / "coffee"
-    // pair after the assistant's call. Better to surface the collision
-    // as a tool error so the model can decide what to do (mention the
-    // existing category, suggest a different name, etc.) than silently
-    // create a parallel one. Check both DB-backed categories AND the
-    // hardcoded DEFAULT_CATEGORIES — `Subscriptions` may not be in the
-    // user's DB yet but it's a real category nonetheless.
-    const existingDbHit = ctx.categories.find(
+    // Reject duplicate names case-insensitively. Use the merged live
+    // category list so we catch BOTH persisted DB rows AND
+    // DEFAULT_CATEGORIES that aren't yet seeded — the latter is still
+    // a real category in the regex categoriser, so a parallel
+    // "Subscriptions" would still produce duplicates in pickers.
+    // Live getter so a category created earlier in the same agentic
+    // loop is visible here.
+    const existing = ctx.getAllCategories().find(
       (c) => c.name.toLowerCase() === name.toLowerCase()
     );
-    const existingDefaultHit = DEFAULT_CATEGORIES.find(
-      (c) => c.name.toLowerCase() === name.toLowerCase()
-    );
-    const existing = existingDbHit ?? existingDefaultHit;
     if (existing) {
       throw new Error(
         `A category named "${existing.name}" already exists. The user can move transactions into it without creating a new one.`
@@ -167,13 +161,15 @@ const applyCategoryOverride: AITool = {
       throw new Error("`categoryId` is required.");
     }
 
-    // Validate the categoryId resolves — either to a DB category or a
-    // default. A bogus id silently writes a dangling override and the
+    // Validate the categoryId resolves against the merged live list.
+    // A bogus id silently writes a dangling override and the
     // categorizer's defensive fallback hides the bug. Surface as a
-    // tool error so the model corrects itself.
-    const targetDb = ctx.categories.find((c) => c.id === categoryId);
-    const targetDefault = DEFAULT_CATEGORIES.find((c) => c.id === categoryId);
-    const target = targetDb ?? targetDefault;
+    // tool error so the model corrects itself. Live getter so a
+    // category created EARLIER IN THE SAME AGENTIC LOOP is visible
+    // here — without that, "create Coffee shops" + "move Skola to
+    // Coffee shops" in one assistant turn would fail validation on
+    // the second call.
+    const target = ctx.getAllCategories().find((c) => c.id === categoryId);
     if (!target) {
       throw new Error(
         `No category with id "${categoryId}". Call list_categories first to see the valid ids.`
@@ -182,10 +178,9 @@ const applyCategoryOverride: AITool = {
 
     // Reuse the existing override row if there is one — keeps the
     // createdAt timestamp stable AND avoids the unique-merchant
-    // constraint failing on a fresh id() write. ctx.overrides is
-    // populated from useMerchantOverrides() so it reflects the live
-    // DB state without needing a queryOnce round-trip.
-    const existing = ctx.overrides.find(
+    // constraint failing on a fresh id() write. Live getter so an
+    // override applied earlier in the same agentic loop is visible.
+    const existing = ctx.getOverrides().find(
       (o) => o.merchant.toLowerCase() === merchant.toLowerCase()
     );
 

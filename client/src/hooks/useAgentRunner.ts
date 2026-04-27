@@ -2,7 +2,7 @@
 // etc.) into the provider-agnostic orchestrator. Returns a `runAgent`
 // function the AssistantChat calls per user prompt.
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useConvertedPayments, useFailedPayments } from "./useTransactions";
 import { useConvertedCredits } from "./useCredits";
 import { useCategories } from "./useCategories";
@@ -126,8 +126,18 @@ export function useAgentRunner() {
   const { failedPayments } = useFailedPayments();
   const { categories } = useCategories();
   const { senders } = useBankSenders();
-  const { categorizeName } = useCategorizer();
+  const { categorizeName, allCategories } = useCategorizer();
   const { overrides } = useMerchantOverrides();
+
+  // Ref-based snapshot of live state. Updated on every render so that
+  // tools called LATER in a single agentic loop see fresh data after
+  // earlier tools in the same loop mutated InstantDB. Without this, an
+  // assistant turn that does `create_category` then `apply_category_
+  // override` validates the second call against the snapshot taken
+  // BEFORE the first call ran, rejecting the just-created id. Codex
+  // HIGH on PR #32.
+  const liveRef = useRef({ allCategories, overrides, categories });
+  liveRef.current = { allCategories, overrides, categories };
 
   return useCallback(
     async (
@@ -152,6 +162,12 @@ export function useAgentRunner() {
           overrides,
           now: new Date(),
           categorizeName,
+          // Getters that read fresh state via the ref — see comment on
+          // liveRef above for the why. The non-getter fields above are
+          // captured once for the run; tools that mutate state should
+          // use the getters for everything they touch.
+          getAllCategories: () => liveRef.current.allCategories,
+          getOverrides: () => liveRef.current.overrides,
         },
         emit,
         signal,

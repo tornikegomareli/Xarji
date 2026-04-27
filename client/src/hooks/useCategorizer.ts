@@ -38,19 +38,55 @@ export function useCategorizer(): Categorizer {
   const { byMerchant } = useMerchantOverrides();
   const { categories: dbCategories } = useCategories();
 
-  // DB categories override defaults on id collision so a user-renamed
-  // "Groceries" → "Food shop" propagates everywhere. New custom
-  // categories (those with ids not in DEFAULT_CATEGORIES) get appended.
-  // Order: defaults first (predictable for the regex categoriser's
-  // fallback), then any custom categories the user created.
+  // Merge DB categories with DEFAULT_CATEGORIES, deduping by *name*
+  // (case-insensitive) rather than by id.
+  //
+  // Why name-based: persisted "default" rows (from
+  // initializeDefaultCategories or the demo seed) use random UUIDs or
+  // prefixed ids ("cat-groceries"), NOT the canonical ids hardcoded
+  // in DEFAULT_CATEGORIES. An id-only merge produces a "Groceries"
+  // (canonical id) AND a "Groceries" (UUID/cat- id) in the same list
+  // — a duplicate the user sees in pickers and dropdowns, and the
+  // wrong target for overrides since two ids both display as the
+  // same name.
+  //
+  // DB rows win on name collision so user renames / recolors
+  // propagate. The DB row's id is preserved so existing
+  // merchantCategoryOverride rows pointing at it keep resolving.
+  // Custom categories (DB rows with names that don't collide with
+  // any default) are appended as-is.
   const allCategories = useMemo<InkCategory[]>(() => {
-    const byId = new Map<string, InkCategory>();
-    for (const c of DEFAULT_CATEGORIES) byId.set(c.id, c);
-    for (const c of dbCategories) {
-      byId.set(c.id, { id: c.id, name: c.name, color: c.color, icon: c.icon });
+    const byName = new Map<string, InkCategory>();
+    for (const c of DEFAULT_CATEGORIES) {
+      byName.set(c.name.toLowerCase(), c);
     }
-    return Array.from(byId.values());
+    for (const c of dbCategories) {
+      byName.set(c.name.toLowerCase(), {
+        id: c.id,
+        name: c.name,
+        color: c.color,
+        icon: c.icon,
+      });
+    }
+    return Array.from(byName.values());
   }, [dbCategories]);
+
+  // Lookup table: canonical default id → entry in allCategories
+  // (DB-backed if the user has the default seeded, hardcoded otherwise).
+  // Built by mapping each DEFAULT_CATEGORIES entry's NAME to the merged
+  // entry. Lets `getCategory` resolve a regex-derived "groceries" to
+  // the user's renamed/recolored version of Groceries even though the
+  // merged entry's id is a DB UUID.
+  const byCanonicalId = useMemo(() => {
+    const out = new Map<string, InkCategory>();
+    for (const def of DEFAULT_CATEGORIES) {
+      const merged = allCategories.find(
+        (c) => c.name.toLowerCase() === def.name.toLowerCase()
+      );
+      if (merged) out.set(def.id, merged);
+    }
+    return out;
+  }, [allCategories]);
 
   const getCategory = useCallback(
     (merchant: string | null | undefined, raw?: string | null): InkCategory => {
@@ -66,14 +102,12 @@ export function useCategorizer(): Categorizer {
           // don't want this hot path silently fixing data.
         }
       }
-      // Resolve the regex result against the merged category list so a
-      // renamed default (e.g. "Subscriptions" → "Recurring") propagates.
-      // Falls back to defaultGetCategory if the merged lookup fails so
-      // we never return undefined.
+      // Regex returns a canonical id like "groceries". Resolve via the
+      // canonical-id → merged-entry map so renamed defaults propagate.
       const id = categorizeId(merchant, raw);
-      return allCategories.find((c) => c.id === id) ?? defaultGetCategory(merchant, raw);
+      return byCanonicalId.get(id) ?? defaultGetCategory(merchant, raw);
     },
-    [byMerchant, allCategories]
+    [byMerchant, allCategories, byCanonicalId]
   );
 
   const categorize = useCallback(
@@ -86,9 +120,13 @@ export function useCategorizer(): Categorizer {
           return override.categoryId;
         }
       }
-      return categorizeId(merchant, raw);
+      // Regex returns a canonical id; if the user has that default
+      // seeded into DB under a UUID, return THAT id so callers grouping
+      // by id agree with `getCategory()`.
+      const canonicalId = categorizeId(merchant, raw);
+      return byCanonicalId.get(canonicalId)?.id ?? canonicalId;
     },
-    [byMerchant, allCategories]
+    [byMerchant, allCategories, byCanonicalId]
   );
 
   const categorizeName = useCallback(

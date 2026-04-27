@@ -8,11 +8,24 @@ import type { AIBlock } from "../../aiThreads";
 import type { ConvertedPayment } from "../../../hooks/useTransactions";
 import type { ConvertedCredit } from "../../../hooks/useCredits";
 import type { FailedPayment, Category, BankSender, MerchantCategoryOverride } from "../../instant";
+import type { InkCategory } from "../../utils";
+
+/** A snapshot getter that returns the freshest value available at the
+ *  moment of read. Backed by a ref the React layer mutates on every
+ *  render; tools call this inside their executors to see the live state
+ *  even when an earlier tool in the same agentic loop just mutated it
+ *  (e.g. create_category followed by apply_category_override in the
+ *  same multi-iteration run). Without this, captured-at-runAgent-start
+ *  snapshots produce stale-data bugs across chained writes. */
+export type Live<T> = () => T;
 
 export interface AIToolContext {
   payments: ConvertedPayment[];
   credits: ConvertedCredit[];
   failedPayments: FailedPayment[];
+  /** Raw DB-backed category rows. Use sparingly — most tools should
+   *  prefer `getAllCategories()` which merges DEFAULT_CATEGORIES so
+   *  tools can target defaults that aren't yet persisted in DB. */
   categories: Category[];
   bankSenders: BankSender[];
   /** Live merchant-override rows. Write tools (apply_category_override)
@@ -28,6 +41,17 @@ export interface AIToolContext {
    *  static `autoCategorize` so an "I moved Spotify to Subscriptions"
    *  override actually shows up in the AI's view of the data. */
   categorizeName: (merchant: string | null | undefined) => string;
+  /** Returns the merged category list (DEFAULT_CATEGORIES + DB rows,
+   *  deduped by name with DB winning). Use this from tools that need
+   *  to expose categories to the model (list_categories) or validate
+   *  category ids in input (apply_category_override). Reads live state
+   *  via a getter so chained writes in the same agentic loop see fresh
+   *  data. */
+  getAllCategories: Live<InkCategory[]>;
+  /** Returns live merchant-override rows. Same staleness story as
+   *  getAllCategories — use this from write tools that need to find
+   *  an existing row's id. */
+  getOverrides: Live<MerchantCategoryOverride[]>;
 }
 
 export interface AITool {

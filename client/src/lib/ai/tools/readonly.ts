@@ -233,7 +233,7 @@ const listCategories: AITool = {
   definition: {
     name: "list_categories",
     description:
-      "Returns the user's categories with their color and icon, plus the GEL-equivalent total for the current month for each.",
+      "Returns the user's full category set (built-in defaults plus any custom categories) with id, name, color, icon, and the GEL-equivalent total for the current month for each. Use the returned ids verbatim when calling apply_category_override.",
     inputSchema: { type: "object", properties: {} },
   },
   statusText: "Looking at your categories…",
@@ -249,8 +249,14 @@ const listCategories: AITool = {
       v.count += 1;
       monthTotals.set(cat, v);
     }
+    // Use the merged live list (DEFAULT_CATEGORIES + DB rows, deduped
+    // by name with DB winning, custom categories appended) so the
+    // model sees defaults that aren't yet persisted in DB. Without
+    // this, on a fresh account the model would see zero categories
+    // from list_categories and have no way to target Groceries /
+    // Dining / etc. via apply_category_override.
     return {
-      categories: ctx.categories.map((c) => ({
+      categories: ctx.getAllCategories().map((c) => ({
         id: c.id,
         name: c.name,
         color: c.color,
