@@ -67,7 +67,7 @@ export function Categories() {
 
   const handleDelete = async (catId: string, catName: string) => {
     const txCount = payments.filter(
-      (p) => p.gelAmount !== null && categorizeId(p.merchant, p.rawMessage) === catId
+      (p) => p.gelAmount !== null && categorizeId(p.merchant, p.rawMessage, p.id) === catId
     ).length;
     const message = txCount === 0
       ? `Delete "${catName}"? This category has no transactions assigned to it.`
@@ -87,7 +87,7 @@ export function Categories() {
     for (const p of monthPayments) {
       if (p.excludedFromAnalytics) continue;
       if (p.gelAmount === null) continue;
-      const cat = getCategory(p.merchant, p.rawMessage);
+      const cat = getCategory(p.merchant, p.rawMessage, p.id);
       if (!map[cat.id]) map[cat.id] = { cat: cat.id, total: 0, count: 0, meta: cat };
       map[cat.id].total += p.gelAmount;
       map[cat.id].count += 1;
@@ -145,7 +145,7 @@ export function Categories() {
       const k = monthKey(p.transactionDate);
       const idx = keys.indexOf(k);
       if (idx === -1) continue;
-      const catId = categorizeId(p.merchant, p.rawMessage);
+      const catId = categorizeId(p.merchant, p.rawMessage, p.id);
       if (perCat[catId]) perCat[catId][idx].value += p.gelAmount;
     }
     return { keys, perCat, labels: trend.map((m) => m.label.slice(0, 3)) };
@@ -156,7 +156,7 @@ export function Categories() {
     for (const p of monthPayments) {
       if (p.excludedFromAnalytics) continue;
       if (p.gelAmount === null) continue;
-      const cid = categorizeId(p.merchant, p.rawMessage);
+      const cid = categorizeId(p.merchant, p.rawMessage, p.id);
       if (cid !== selectedId) continue;
       const m = p.merchant || "Unknown";
       if (!map[m]) map[m] = { merchant: m, total: 0, count: 0 };
@@ -164,11 +164,11 @@ export function Categories() {
       map[m].count += 1;
     }
     return Object.values(map).sort((a, b) => b.total - a.total);
-  }, [monthPayments, selectedId]);
+  }, [monthPayments, selectedId, categorizeId]);
 
   const selTx: InkTx[] = useMemo(() => {
     return monthPayments
-      .filter((p) => categorizeId(p.merchant, p.rawMessage) === selectedId)
+      .filter((p) => categorizeId(p.merchant, p.rawMessage, p.id) === selectedId)
       .slice(0, 20)
       .map((p) => ({
         id: p.id,
@@ -184,7 +184,7 @@ export function Categories() {
         rawMessage: p.rawMessage,
         excludedFromAnalytics: p.excludedFromAnalytics,
       }));
-  }, [monthPayments, selectedId]);
+  }, [monthPayments, selectedId, categorizeId]);
 
   const eyebrow = `Where your money went · ${format(now, "MMMM")}`;
 

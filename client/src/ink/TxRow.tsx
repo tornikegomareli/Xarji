@@ -41,7 +41,7 @@ export function TxRow({
   const T = useTheme();
   const vp = useViewport();
   const { getCategory } = useCategorizer();
-  const cat = getCategory(t.merchant, t.rawMerchant);
+  const cat = getCategory(t.merchant, t.rawMerchant, t.id);
   const failed = t.kind === "failed";
   const credit = t.kind === "credit";
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -191,6 +191,7 @@ export function TxRow({
               merchant={t.merchant}
               current={cat}
               onClose={() => setPickerOpen(false)}
+              paymentId={t.id}
             />
           )}
         </div>

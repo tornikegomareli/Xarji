@@ -16,13 +16,16 @@ import {
   type InkCategory,
 } from "../lib/utils";
 import { useMerchantOverrides } from "./useMerchantOverrides";
+import { useTransactionOverrides } from "./useTransactionOverrides";
 import { useCategories } from "./useCategories";
 
 export interface Categorizer {
-  /** Returns the category id (e.g. "groceries") for a merchant. */
-  categorize: (merchant: string | null | undefined, raw?: string | null) => string;
-  /** Returns the full InkCategory record with name + color + icon. */
-  getCategory: (merchant: string | null | undefined, raw?: string | null) => InkCategory;
+  /** Returns the category id (e.g. "groceries") for a merchant.
+   *  Pass paymentId to honour per-transaction overrides (higher priority). */
+  categorize: (merchant: string | null | undefined, raw?: string | null, paymentId?: string | null) => string;
+  /** Returns the full InkCategory record with name + color + icon.
+   *  Pass paymentId to honour per-transaction overrides (higher priority). */
+  getCategory: (merchant: string | null | undefined, raw?: string | null, paymentId?: string | null) => InkCategory;
   /** Convenience for places that historically called `autoCategorize`
    *  to get the human-facing category name (e.g. "Groceries"). */
   categorizeName: (merchant: string | null | undefined) => string;
@@ -36,6 +39,7 @@ export interface Categorizer {
 
 export function useCategorizer(): Categorizer {
   const { byMerchant } = useMerchantOverrides();
+  const { byPaymentId } = useTransactionOverrides();
   const { categories: dbCategories } = useCategories();
 
   // Merge DB categories with DEFAULT_CATEGORIES, deduping by *name*
@@ -89,7 +93,15 @@ export function useCategorizer(): Categorizer {
   }, [allCategories]);
 
   const getCategory = useCallback(
-    (merchant: string | null | undefined, raw?: string | null): InkCategory => {
+    (merchant: string | null | undefined, raw?: string | null, paymentId?: string | null): InkCategory => {
+      // Per-transaction override wins over everything.
+      if (paymentId) {
+        const txOverride = byPaymentId.get(paymentId);
+        if (txOverride) {
+          const hit = allCategories.find((c) => c.id === txOverride.categoryId);
+          if (hit) return hit;
+        }
+      }
       if (merchant) {
         const override = byMerchant.get(merchant.trim().toLowerCase());
         if (override) {
@@ -107,11 +119,17 @@ export function useCategorizer(): Categorizer {
       const id = categorizeId(merchant, raw);
       return byCanonicalId.get(id) ?? defaultGetCategory(merchant, raw);
     },
-    [byMerchant, allCategories, byCanonicalId]
+    [byPaymentId, byMerchant, allCategories, byCanonicalId]
   );
 
   const categorize = useCallback(
-    (merchant: string | null | undefined, raw?: string | null): string => {
+    (merchant: string | null | undefined, raw?: string | null, paymentId?: string | null): string => {
+      if (paymentId) {
+        const txOverride = byPaymentId.get(paymentId);
+        if (txOverride && allCategories.some((c) => c.id === txOverride.categoryId)) {
+          return txOverride.categoryId;
+        }
+      }
       if (merchant) {
         const override = byMerchant.get(merchant.trim().toLowerCase());
         // Only honour an override if the target still exists. Dangling
@@ -126,7 +144,7 @@ export function useCategorizer(): Categorizer {
       const canonicalId = categorizeId(merchant, raw);
       return byCanonicalId.get(canonicalId)?.id ?? canonicalId;
     },
-    [byMerchant, allCategories, byCanonicalId]
+    [byPaymentId, byMerchant, allCategories, byCanonicalId]
   );
 
   const categorizeName = useCallback(

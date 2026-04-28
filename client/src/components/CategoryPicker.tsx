@@ -1,14 +1,9 @@
-// Inline dropdown that lets the user move a transaction's merchant
-// into a different category. Persists the choice via the
-// useMerchantOverrides hook (writes a row to InstantDB's
-// merchantCategoryOverrides table). The choice applies to *every*
-// transaction from that merchant — past and future — because the
-// override is per-merchant, not per-transaction.
-
-import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTheme, type InkTheme } from "../ink/theme";
 import { type InkCategory } from "../lib/utils";
 import { useMerchantOverrides } from "../hooks/useMerchantOverrides";
+import { useTransactionOverrides } from "../hooks/useTransactionOverrides";
 import { useCategorizer } from "../hooks/useCategorizer";
 import { useCategoryActions } from "../hooks/useCategories";
 import { pickCategoryDefaults } from "../lib/categoryDefaults";
@@ -18,6 +13,7 @@ export function CategoryPicker({
   current,
   onClose,
   anchor = "left",
+  paymentId,
 }: {
   merchant: string;
   current: InkCategory;
@@ -28,13 +24,23 @@ export function CategoryPicker({
    *  edge of a narrow column and a left-anchored picker would clip
    *  off-screen. */
   anchor?: "left" | "right";
+  /** When provided, the picker offers a scope toggle: "This transaction"
+   *  (per-transaction override) vs "All [merchant]" (per-merchant override).
+   *  Defaults to transaction scope when set. Omit for merchant-only behaviour. */
+  paymentId?: string;
 }) {
   const T = useTheme();
   const ref = useRef<HTMLDivElement | null>(null);
-  const { byMerchant, setOverride, clearOverride } = useMerchantOverrides();
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number } | null>(null);
+  const { byMerchant, setOverride: setMerchantOverride, clearOverride: clearMerchantOverride } = useMerchantOverrides();
+  const { byPaymentId, setOverride: setTxOverride, clearOverride: clearTxOverride } = useTransactionOverrides();
   const { allCategories } = useCategorizer();
   const { addCategory } = useCategoryActions();
   const [busy, setBusy] = useState(false);
+  const [scope, setScope] = useState<"transaction" | "merchant">(
+    paymentId ? "transaction" : "merchant"
+  );
   // "creating mode" — user clicked "+ New category" and we render the
   // inline name input instead of the category list. Keeps the picker
   // self-contained: no modal, no separate component, no navigation
@@ -44,7 +50,10 @@ export function CategoryPicker({
   const [error, setError] = useState<string | null>(null);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
 
-  const hasOverride = !!byMerchant.get(merchant.trim().toLowerCase());
+  const hasOverride =
+    scope === "transaction"
+      ? !!paymentId && !!byPaymentId.get(paymentId)
+      : !!byMerchant.get(merchant.trim().toLowerCase());
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -76,11 +85,34 @@ export function CategoryPicker({
     if (creating) draftInputRef.current?.focus();
   }, [creating]);
 
+  // Compute fixed position from the trigger's bounding rect so the
+  // portal dropdown renders below the badge regardless of scroll
+  // containers or Card's overflow: hidden.
+  useLayoutEffect(() => {
+    const parent = anchorRef.current?.parentElement;
+    if (!parent) return;
+    const rect = parent.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const flipUp = spaceBelow < 320;
+    const hPos = anchor === "right"
+      ? { right: window.innerWidth - rect.right }
+      : { left: rect.left };
+    if (flipUp) {
+      setDropdownPos({ ...hPos, bottom: window.innerHeight - rect.top + 6 });
+    } else {
+      setDropdownPos({ ...hPos, top: rect.bottom + 6 });
+    }
+  }, [anchor]);
+
   const pick = async (cat: InkCategory) => {
     if (busy) return;
     setBusy(true);
     try {
-      await setOverride(merchant, cat.id);
+      if (scope === "transaction" && paymentId) {
+        await setTxOverride(paymentId, cat.id);
+      } else {
+        await setMerchantOverride(merchant, cat.id);
+      }
       onClose();
     } finally {
       setBusy(false);
@@ -91,7 +123,11 @@ export function CategoryPicker({
     if (busy) return;
     setBusy(true);
     try {
-      await clearOverride(merchant);
+      if (scope === "transaction" && paymentId) {
+        await clearTxOverride(paymentId);
+      } else {
+        await clearMerchantOverride(merchant);
+      }
       onClose();
     } finally {
       setBusy(false);
@@ -126,10 +162,11 @@ export function CategoryPicker({
         icon: defaults.icon,
         isDefault: false,
       });
-      // Apply the new category as the merchant's override immediately
-      // — that's what the user clicked in for, otherwise they'd have
-      // to do a second pick after creating.
-      await setOverride(merchant, newId);
+      if (scope === "transaction" && paymentId) {
+        await setTxOverride(paymentId, newId);
+      } else {
+        await setMerchantOverride(merchant, newId);
+      }
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -138,15 +175,18 @@ export function CategoryPicker({
     }
   };
 
-  return (
+  const dropdown = dropdownPos && (
     <div
       ref={ref}
+      onClick={(e) => e.stopPropagation()}
       style={{
-        position: "absolute",
-        top: "calc(100% + 6px)",
-        ...(anchor === "right" ? { right: 0 } : { left: 0 }),
-        zIndex: 100,
-        minWidth: 260,
+        position: "fixed",
+        top: dropdownPos.top,
+        bottom: dropdownPos.bottom,
+        left: dropdownPos.left,
+        right: dropdownPos.right,
+        zIndex: 1000,
+        minWidth: 300,
         background: T.panel,
         border: `1px solid ${T.lineStrong}`,
         borderRadius: 12,
@@ -264,6 +304,22 @@ export function CategoryPicker({
           >
             Move {merchant} to
           </div>
+          {paymentId && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 3,
+                padding: "2px 4px 4px",
+                background: T.panelAlt,
+                borderRadius: 8,
+                margin: "0 4px 2px",
+              }}
+            >
+              <ScopeBtn T={T} label="Just this one" active={scope === "transaction"} onClick={() => setScope("transaction")} />
+              <ScopeBtn T={T} label={`All ${merchant.slice(0, 10)}${merchant.length > 10 ? "…" : ""} transactions`} active={scope === "merchant"} onClick={() => setScope("merchant")} />
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", maxHeight: 280, overflowY: "auto" }}>
             {allCategories.map((cat) => (
               <CategoryRow
@@ -316,6 +372,47 @@ export function CategoryPicker({
         </>
       )}
     </div>
+  );
+
+  return (
+    <>
+      <span ref={anchorRef} style={{ position: "absolute", inset: 0, pointerEvents: "none" }} />
+      {createPortal(dropdown, document.body)}
+    </>
+  );
+}
+
+function ScopeBtn({
+  T,
+  label,
+  active,
+  onClick,
+}: {
+  T: InkTheme;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1,
+        padding: "5px 8px",
+        borderRadius: 6,
+        border: "none",
+        background: active ? T.panel : "transparent",
+        color: active ? T.text : T.muted,
+        fontSize: 11,
+        fontFamily: T.sans,
+        fontWeight: active ? 600 : 400,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+        minWidth: 0,
+      }}
+    >
+      {label}
+    </button>
   );
 }
 

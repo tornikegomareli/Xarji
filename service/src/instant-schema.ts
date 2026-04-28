@@ -97,6 +97,15 @@ const schema = i.schema({
       categoryId: i.string(),
       createdAt: i.number(),
     }),
+
+    // Per-transaction category overrides. Takes priority over the
+    // per-merchant override. paymentId is the InstantDB entity id of
+    // the payments row — stable, unique, never changes after creation.
+    transactionCategoryOverrides: i.entity({
+      paymentId: i.string().unique(),
+      categoryId: i.string(),
+      createdAt: i.number(),
+    }),
   },
   links: {},
 });

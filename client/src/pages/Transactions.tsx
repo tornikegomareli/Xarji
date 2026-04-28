@@ -63,7 +63,7 @@ export function Transactions() {
         cardLastDigits: p.cardLastDigits,
         transactionDate: p.transactionDate,
         bankSenderId: p.bankSenderId,
-        category: categorizeId(p.merchant, p.rawMessage),
+        category: categorizeId(p.merchant, p.rawMessage, p.id),
         rawMessage: p.rawMessage,
         plusEarned: p.plusEarned,
         excludedFromAnalytics: p.excludedFromAnalytics,
@@ -381,7 +381,7 @@ export function Transactions() {
               <DetailRow T={T} k="When" v={new Date(selected.transactionDate).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })} />
               <DetailRow T={T} k="Card" v={selected.cardLastDigits ? `··${selected.cardLastDigits}` : "—"} />
               <DetailRow T={T} k="Bank" v={selected.bankSenderId} />
-              <CategoryDetailRow T={T} merchant={selected.merchant} rawMerchant={selected.rawMerchant} />
+              <CategoryDetailRow T={T} merchant={selected.merchant} rawMerchant={selected.rawMerchant} paymentId={selected.kind === "payment" ? selected.id : undefined} />
               {selected.kind === "failed" ? (
                 <DetailRow T={T} k="Reason" v={selected.failureReason || "—"} />
               ) : (
@@ -499,14 +499,16 @@ function CategoryDetailRow({
   T,
   merchant,
   rawMerchant,
+  paymentId,
 }: {
   T: InkTheme;
   merchant: string;
   rawMerchant?: string;
+  paymentId?: string;
 }) {
   const { getCategory } = useCategorizer();
   const [open, setOpen] = useState(false);
-  const cat = getCategory(merchant, rawMerchant);
+  const cat = getCategory(merchant, rawMerchant, paymentId);
   const pickerMerchant = (merchant || rawMerchant || "").trim();
   const canEdit = pickerMerchant.length > 0;
 
@@ -547,6 +549,7 @@ function CategoryDetailRow({
           current={cat}
           onClose={() => setOpen(false)}
           anchor="right"
+          paymentId={paymentId}
         />
       )}
     </div>

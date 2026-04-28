@@ -60,6 +60,11 @@ const schema = i.schema({
       categoryId: i.string(),
       createdAt: i.number(),
     }),
+    transactionCategoryOverrides: i.entity({
+      paymentId: i.string().unique(),
+      categoryId: i.string(),
+      createdAt: i.number(),
+    }),
     credits: i.entity({
       transactionId: i.string().unique(),
       transactionType: i.string(),
@@ -189,6 +194,13 @@ export type BankSender = {
 export type MerchantCategoryOverride = {
   id: string;
   merchant: string;
+  categoryId: string;
+  createdAt: number;
+};
+
+export type TransactionCategoryOverride = {
+  id: string;
+  paymentId: string;
   categoryId: string;
   createdAt: number;
 };
