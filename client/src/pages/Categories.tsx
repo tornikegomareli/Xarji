@@ -91,8 +91,30 @@ export function Categories() {
       map[cat.id].total += p.gelAmount;
       map[cat.id].count += 1;
     }
-    return Object.values(map).sort((a, b) => b.total - a.total);
-  }, [monthPayments, getCategory]);
+    const aggregated = Object.values(map).sort((a, b) => b.total - a.total);
+
+    // Render user-created (non-default) categories that have zero spend
+    // in the active range AT THE BOTTOM of the list so they're still
+    // editable / deletable. Without this, a freshly-created "Pet care"
+    // disappears from the list immediately because the spend
+    // aggregation skips it (no transactions assigned yet) — the user
+    // would think the create silently failed. Codex flagged the
+    // empty-category invisibility on PR #35.
+    const visibleIds = new Set(aggregated.map((c) => c.cat));
+    const empties: CatAgg[] = [];
+    for (const c of dbCategories) {
+      if (c.isDefault) continue;
+      if (visibleIds.has(c.id)) continue;
+      const meta: InkCategory = {
+        id: c.id,
+        name: c.name,
+        color: c.color,
+        icon: c.icon,
+      };
+      empties.push({ cat: c.id, total: 0, count: 0, meta });
+    }
+    return [...aggregated, ...empties];
+  }, [monthPayments, getCategory, dbCategories]);
 
   const total = cats.reduce((s, c) => s + c.total, 0);
   const [selected, setSelected] = useState<string | null>(null);
