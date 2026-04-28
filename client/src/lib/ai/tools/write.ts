@@ -1,20 +1,21 @@
 // Write tools the assistant can call to mutate the user's data.
 // Unlike the readonly tools, these have side effects in InstantDB.
 //
-// Auto-apply policy (from issue #29):
-//   - CREATE  → executes immediately (reversible via /categories × button
-//               or CategoryPicker's "Clear override" button)
-//   - EDIT    → would require confirm. Not in this PR — see issue #29
-//               for the discussion. Replacing an existing override is
-//               technically an EDIT but the blast radius is small (at
-//               most one merchant's category) and the user can clear it
-//               in /transactions, so apply_category_override permits
-//               the replace case.
-//   - DELETE  → not exposed as tools. /categories has a × button for
-//               categories; /transactions' CategoryPicker has a Clear
-//               Override button. Both are 1-click UI actions, so the
-//               assistant tells the user to use them rather than
-//               carrying confirm-card UX in chat.
+// Auto-apply policy (decided across issue #29 + #33 reviews):
+//   - CREATE   → executes immediately (reversible via /categories ×
+//                button or CategoryPicker's "Clear override" button)
+//   - EDIT     → auto-apply for category property edits (name / color
+//                / icon — pure visual, blast radius zero). Override
+//                replacement also auto-applies (one merchant, easily
+//                reverted via CategoryPicker).
+//   - DELETE   → NOT a tool. The UI's × button on /categories already
+//                gates deletion behind a confirm dialog AND cleans up
+//                dangling overrides; bypassing that dialog from chat
+//                would silently destroy manual categorization state on
+//                a single mistaken model call (Codex HIGH on PR #35).
+//                The assistant can describe a deletion the user might
+//                want and tell them to click × on /categories — that
+//                routes through the existing confirm path naturally.
 //
 // Tools call `db.transact()` directly via the imported singleton
 // (matches the pattern in client/src/hooks/useCategories.ts and
@@ -175,4 +176,102 @@ const applyCategoryOverride: AITool = {
   },
 };
 
-export const WRITE_TOOLS: AITool[] = [createCategory, applyCategoryOverride];
+const updateCategory: AITool = {
+  definition: {
+    name: "update_category",
+    description:
+      "Renames or recolors an existing category. AUTO-APPLIES — the change is reflected immediately. Only works on user-created categories (those with `isDefault: false`); default categories like Groceries / Dining / Subscriptions return an error because changing their visible identity would break the regex categoriser's mapping. At least one of `name`, `color`, `icon` must be provided. Use list_categories to discover ids.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "The id of the category to update. Required.",
+        },
+        name: {
+          type: "string",
+          description: "New display name. Optional.",
+        },
+        color: {
+          type: "string",
+          description: "New hex color (e.g. '#FF5A3A'). Optional.",
+        },
+        icon: {
+          type: "string",
+          description: "New one-character glyph for the category dot. Optional.",
+        },
+      },
+      required: ["id"],
+    },
+  },
+  statusText: "Updating the category…",
+  executor: async (input, ctx) => {
+    const id = typeof input.id === "string" ? input.id : "";
+    if (!id) throw new Error("`id` is required.");
+
+    // Validate the id resolves to a non-default DB-backed category.
+    // Defaults can't be edited safely — the regex categoriser maps
+    // merchants to canonical default ids, which would no longer match
+    // a renamed entry. (Allowing default-renames needs a canonicalId
+    // schema field — tracked as B.2 in issue #33.)
+    const target = ctx.getAllCategories().find((c) => c.id === id);
+    if (!target) {
+      throw new Error(
+        `No category with id "${id}". Call list_categories to see valid ids.`
+      );
+    }
+    const dbRow = ctx.categories.find((c) => c.id === id);
+    if (!dbRow) {
+      throw new Error(
+        `"${target.name}" is a built-in category and can't be edited from chat. The user can rename a category they created themselves on /categories.`
+      );
+    }
+    if (dbRow.isDefault) {
+      throw new Error(
+        `"${target.name}" is a default category and can't be edited from chat. The user can rename categories they created themselves on /categories.`
+      );
+    }
+
+    const updates: Record<string, string> = {};
+    if (typeof input.name === "string" && input.name.trim()) {
+      const newName = input.name.trim();
+      // Reject duplicate-name collisions against any other category
+      // (case-insensitive). The form on /categories enforces the same
+      // rule, so the rules match across channels.
+      const collide = ctx.getAllCategories().find(
+        (c) => c.id !== id && c.name.toLowerCase() === newName.toLowerCase()
+      );
+      if (collide) {
+        throw new Error(`A category named "${collide.name}" already exists.`);
+      }
+      updates.name = newName;
+    }
+    if (typeof input.color === "string") updates.color = input.color;
+    if (typeof input.icon === "string") updates.icon = input.icon;
+    if (Object.keys(updates).length === 0) {
+      throw new Error("At least one of `name`, `color`, `icon` must be provided.");
+    }
+
+    await db.transact(db.tx.categories[id].update(updates));
+
+    return {
+      id,
+      previousName: target.name,
+      ...updates,
+      updated: true,
+    };
+  },
+};
+
+// `delete_category` deliberately not exposed as a tool. The UI's ×
+// button on /categories gates deletion behind window.confirm AND
+// triggers the dangling-override cleanup; piping the model around
+// that dialog would silently destroy manual categorization state on
+// a single mistaken model call. The assistant describes the
+// deletion the user might want and points at /categories' × button.
+
+export const WRITE_TOOLS: AITool[] = [
+  createCategory,
+  applyCategoryOverride,
+  updateCategory,
+];

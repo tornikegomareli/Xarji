@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useTheme, useViewport } from "../ink/theme";
+import { useTheme, useViewport, type InkTheme } from "../ink/theme";
 import { Card, CardLabel, CardTitle, LinkBtn, PageHeader } from "../ink/primitives";
 import { AreaChart, Donut, HBar } from "../ink/charts";
 import { TxRow, type InkTx } from "../ink/TxRow";
@@ -12,7 +12,17 @@ import { useCategories, useCategoryActions } from "../hooks/useCategories";
 import { useRangeState } from "../hooks/useRangeState";
 import { isInRange, rangeToDateParams } from "../lib/dateRange";
 import { formatCompact, formatLocalDay, monthKey } from "../ink/format";
+import { pickCategoryDefaults } from "../lib/categoryDefaults";
 import { endOfMonth, format } from "date-fns";
+
+// Preset palettes the form lets the user pick from. Mirrors
+// pickCategoryDefaults' palette so picker + AI tool + form
+// converge on the same set.
+const FORM_COLORS = [
+  "#FF5A3A", "#4BD9A2", "#6AA3FF", "#E8A05A",
+  "#B38DF7", "#FF7A9E", "#F1B84A", "#6b7280",
+];
+const FORM_ICONS = ["◐", "◆", "◉", "✦", "✧", "◇", "✶", "◈"];
 
 interface CatAgg {
   cat: string;
@@ -30,9 +40,16 @@ export function Categories() {
   const { payments } = useConvertedPayments();
   const { getCategory, categorize: categorizeId, allCategories } = useCategorizer();
   const { categories: dbCategories } = useCategories();
-  const { deleteCategory } = useCategoryActions();
+  const { addCategory, updateCategory, deleteCategory } = useCategoryActions();
   const trend = useMonthlyTrend(6);
   const { range, props: rangeProps } = useRangeState("Month");
+
+  // Form modes: only one form is open at a time. `creating` toggles
+  // the bottom-of-list "+ New category" form; `editingId` carries the
+  // id of the row currently in edit mode (null = no row is being
+  // edited). Both close on Escape / Cancel / successful submit.
+  const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // A category row is deletable when there's a DB row with isDefault: false.
   // Hard-coded DEFAULT_CATEGORIES that haven't been seeded into the DB
@@ -74,8 +91,30 @@ export function Categories() {
       map[cat.id].total += p.gelAmount;
       map[cat.id].count += 1;
     }
-    return Object.values(map).sort((a, b) => b.total - a.total);
-  }, [monthPayments, getCategory]);
+    const aggregated = Object.values(map).sort((a, b) => b.total - a.total);
+
+    // Render user-created (non-default) categories that have zero spend
+    // in the active range AT THE BOTTOM of the list so they're still
+    // editable / deletable. Without this, a freshly-created "Pet care"
+    // disappears from the list immediately because the spend
+    // aggregation skips it (no transactions assigned yet) — the user
+    // would think the create silently failed. Codex flagged the
+    // empty-category invisibility on PR #35.
+    const visibleIds = new Set(aggregated.map((c) => c.cat));
+    const empties: CatAgg[] = [];
+    for (const c of dbCategories) {
+      if (c.isDefault) continue;
+      if (visibleIds.has(c.id)) continue;
+      const meta: InkCategory = {
+        id: c.id,
+        name: c.name,
+        color: c.color,
+        icon: c.icon,
+      };
+      empties.push({ cat: c.id, total: 0, count: 0, meta });
+    }
+    return [...aggregated, ...empties];
+  }, [monthPayments, getCategory, dbCategories]);
 
   const total = cats.reduce((s, c) => s + c.total, 0);
   const [selected, setSelected] = useState<string | null>(null);
@@ -188,7 +227,32 @@ export function Categories() {
             {cats.map((c) => {
               const pct = (c.total / total) * 100;
               const active = c.cat === selectedId;
-              const deletable = deletableIds.has(c.cat);
+              const editable = deletableIds.has(c.cat);
+              const isEditing = editingId === c.cat;
+              if (isEditing) {
+                return (
+                  <CategoryForm
+                    key={c.cat}
+                    T={T}
+                    initial={{ name: c.meta.name, color: c.meta.color, icon: c.meta.icon }}
+                    onCancel={() => setEditingId(null)}
+                    onSubmit={async ({ name, color, icon }) => {
+                      // Reject duplicate names against the merged list (excluding self).
+                      const nameLc = name.trim().toLowerCase();
+                      const collide = allCategories.find(
+                        (cat) =>
+                          cat.id !== c.cat &&
+                          cat.name.toLowerCase() === nameLc
+                      );
+                      if (collide) return `"${collide.name}" already exists.`;
+                      await updateCategory(c.cat, { name: name.trim(), color, icon });
+                      setEditingId(null);
+                      return null;
+                    }}
+                    submitLabel="Save"
+                  />
+                );
+              }
               return (
                 <div
                   key={c.cat}
@@ -224,36 +288,109 @@ export function Categories() {
                   >
                     ₾{Math.round(c.total)}
                   </span>
-                  {deletable && (
-                    <button
-                      type="button"
-                      title={`Delete "${c.meta.name}"`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(c.cat, c.meta.name);
-                      }}
-                      style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 11,
-                        border: `1px solid ${T.line}`,
-                        background: "transparent",
-                        color: T.dim,
-                        fontSize: 12,
-                        lineHeight: 1,
-                        cursor: "pointer",
-                        flexShrink: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      ×
-                    </button>
+                  {editable && (
+                    <>
+                      <button
+                        type="button"
+                        title={`Edit "${c.meta.name}"`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingId(c.cat);
+                          setCreating(false);
+                        }}
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: 11,
+                          border: `1px solid ${T.line}`,
+                          background: "transparent",
+                          color: T.dim,
+                          fontSize: 11,
+                          lineHeight: 1,
+                          cursor: "pointer",
+                          flexShrink: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        title={`Delete "${c.meta.name}"`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(c.cat, c.meta.name);
+                        }}
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: 11,
+                          border: `1px solid ${T.line}`,
+                          background: "transparent",
+                          color: T.dim,
+                          fontSize: 12,
+                          lineHeight: 1,
+                          cursor: "pointer",
+                          flexShrink: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        ×
+                      </button>
+                    </>
                   )}
                 </div>
               );
             })}
+            {creating ? (
+              <CategoryForm
+                T={T}
+                onCancel={() => setCreating(false)}
+                onSubmit={async ({ name, color, icon }) => {
+                  const nameLc = name.trim().toLowerCase();
+                  const collide = allCategories.find(
+                    (cat) => cat.name.toLowerCase() === nameLc
+                  );
+                  if (collide) return `"${collide.name}" already exists.`;
+                  await addCategory({
+                    name: name.trim(),
+                    color,
+                    icon,
+                    isDefault: false,
+                  });
+                  setCreating(false);
+                  return null;
+                }}
+                submitLabel="Create"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setCreating(true);
+                  setEditingId(null);
+                }}
+                style={{
+                  marginTop: 6,
+                  padding: "10px 12px",
+                  background: "transparent",
+                  border: `1px dashed ${T.line}`,
+                  borderRadius: 10,
+                  color: T.muted,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  fontFamily: T.sans,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                + New category…
+              </button>
+            )}
           </div>
         </Card>
 
@@ -448,6 +585,193 @@ export function Categories() {
             </Card>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Inline form used for both creating and editing a category. Renders
+ *  inside the left-hand category list, replacing the row when in edit
+ *  mode. Color/icon pickers are preset swatches matching
+ *  pickCategoryDefaults so the form, the AI tool, and the inline
+ *  CategoryPicker create-flow share the same visual vocabulary. */
+function CategoryForm({
+  T,
+  initial,
+  onCancel,
+  onSubmit,
+  submitLabel,
+}: {
+  T: InkTheme;
+  initial?: { name: string; color: string; icon: string };
+  onCancel: () => void;
+  onSubmit: (values: { name: string; color: string; icon: string }) => Promise<string | null>;
+  submitLabel: string;
+}) {
+  const [name, setName] = useState(initial?.name ?? "");
+  // For new categories, default to deterministic defaults from the
+  // current name (regenerated as the user types) so creating with
+  // "Coffee shops" gives the same look the AI tool would. Edit mode
+  // keeps whatever the row already had.
+  const initialDefaults = pickCategoryDefaults(initial?.name ?? "");
+  const [color, setColor] = useState(initial?.color ?? initialDefaults.color);
+  const [icon, setIcon] = useState(initial?.icon ?? initialDefaults.icon);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Update the name-derived defaults as the user types in create mode
+  // (initial undefined). Edit mode never re-derives — the user's
+  // explicit color/icon stays unless they pick a new one.
+  const isCreate = !initial;
+  const handleNameChange = (next: string) => {
+    setName(next);
+    if (error) setError(null);
+    if (isCreate) {
+      const d = pickCategoryDefaults(next);
+      setColor(d.color);
+      setIcon(d.icon);
+    }
+  };
+
+  const submit = async () => {
+    if (busy) return;
+    if (!name.trim()) {
+      setError("Name is required.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const err = await onSubmit({ name, color, icon });
+      if (err) setError(err);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        background: T.panelAlt,
+        borderRadius: 10,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => handleNameChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        placeholder="Category name"
+        disabled={busy}
+        style={{
+          padding: "8px 12px",
+          background: T.panel,
+          border: `1px solid ${T.line}`,
+          borderRadius: 8,
+          color: T.text,
+          fontSize: 13,
+          fontFamily: T.sans,
+          outline: "none",
+        }}
+      />
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {FORM_COLORS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => setColor(c)}
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 11,
+              background: c,
+              border: color === c ? `2px solid ${T.text}` : `2px solid transparent`,
+              cursor: "pointer",
+              padding: 0,
+            }}
+          />
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {FORM_ICONS.map((g) => (
+          <button
+            key={g}
+            type="button"
+            onClick={() => setIcon(g)}
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 6,
+              background: icon === g ? T.panel : "transparent",
+              border: icon === g ? `1px solid ${T.text}` : `1px solid ${T.line}`,
+              color: T.text,
+              fontSize: 14,
+              cursor: "pointer",
+              fontFamily: T.sans,
+              padding: 0,
+            }}
+          >
+            {g}
+          </button>
+        ))}
+      </div>
+      {error && (
+        <div style={{ fontSize: 11, color: T.accent, fontFamily: T.sans }}>{error}</div>
+      )}
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={busy || !name.trim()}
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            background: busy || !name.trim() ? T.panel : T.accent,
+            color: busy || !name.trim() ? T.dim : "#fff",
+            border: "none",
+            borderRadius: 8,
+            fontSize: 12,
+            fontWeight: 600,
+            fontFamily: T.sans,
+            cursor: busy || !name.trim() ? "not-allowed" : "pointer",
+          }}
+        >
+          {busy ? "Saving…" : submitLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          style={{
+            padding: "8px 12px",
+            background: "transparent",
+            color: T.muted,
+            border: `1px solid ${T.line}`,
+            borderRadius: 8,
+            fontSize: 12,
+            fontFamily: T.sans,
+            cursor: busy ? "not-allowed" : "pointer",
+          }}
+        >
+          Cancel
+        </button>
       </div>
     </div>
   );
