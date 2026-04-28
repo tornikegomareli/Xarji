@@ -8,12 +8,14 @@
 //                / icon — pure visual, blast radius zero). Override
 //                replacement also auto-applies (one merchant, easily
 //                reverted via CategoryPicker).
-//   - DELETE   → auto-apply, scoped to non-default categories. The
-//                same useCategoryActions.deleteCategory the UI's ×
-//                button calls, including the dangling-override
-//                cleanup. Default categories error out from the tool
-//                so the assistant can't silently break the spending-
-//                mix invariant.
+//   - DELETE   → NOT a tool. The UI's × button on /categories already
+//                gates deletion behind a confirm dialog AND cleans up
+//                dangling overrides; bypassing that dialog from chat
+//                would silently destroy manual categorization state on
+//                a single mistaken model call (Codex HIGH on PR #35).
+//                The assistant can describe a deletion the user might
+//                want and tell them to click × on /categories — that
+//                routes through the existing confirm path naturally.
 //
 // Tools call `db.transact()` directly via the imported singleton
 // (matches the pattern in client/src/hooks/useCategories.ts and
@@ -261,70 +263,15 @@ const updateCategory: AITool = {
   },
 };
 
-const deleteCategory: AITool = {
-  definition: {
-    name: "delete_category",
-    description:
-      "Deletes a user-created category. AUTO-APPLIES. Any merchant overrides pointing at the deleted category are removed in the same operation, so affected transactions revert to their auto-detected category. Only works on user-created categories — default categories return an error. Use list_categories to discover ids.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: {
-          type: "string",
-          description: "The id of the category to delete. Required.",
-        },
-      },
-      required: ["id"],
-    },
-  },
-  statusText: "Deleting the category…",
-  executor: async (input, ctx) => {
-    const id = typeof input.id === "string" ? input.id : "";
-    if (!id) throw new Error("`id` is required.");
-
-    const target = ctx.getAllCategories().find((c) => c.id === id);
-    if (!target) {
-      throw new Error(
-        `No category with id "${id}". Call list_categories to see valid ids.`
-      );
-    }
-    const dbRow = ctx.categories.find((c) => c.id === id);
-    if (!dbRow) {
-      throw new Error(
-        `"${target.name}" is a built-in category — it doesn't have a DB row to delete. Built-ins can't be removed from chat.`
-      );
-    }
-    if (dbRow.isDefault) {
-      throw new Error(
-        `"${target.name}" is a default category and can't be deleted from chat.`
-      );
-    }
-
-    // Find dangling overrides targeting this category and clean them
-    // up in the same transact call — same logic as
-    // useCategoryActions.deleteCategory.
-    const ops: unknown[] = [db.tx.categories[id].delete()];
-    let danglingOverrideCount = 0;
-    for (const o of ctx.getOverrides()) {
-      if (o.categoryId === id) {
-        ops.push(db.tx.merchantCategoryOverrides[o.id].delete());
-        danglingOverrideCount += 1;
-      }
-    }
-    await db.transact(ops as Parameters<typeof db.transact>[0]);
-
-    return {
-      id,
-      name: target.name,
-      removedOverrides: danglingOverrideCount,
-      deleted: true,
-    };
-  },
-};
+// `delete_category` deliberately not exposed as a tool. The UI's ×
+// button on /categories gates deletion behind window.confirm AND
+// triggers the dangling-override cleanup; piping the model around
+// that dialog would silently destroy manual categorization state on
+// a single mistaken model call. The assistant describes the
+// deletion the user might want and points at /categories' × button.
 
 export const WRITE_TOOLS: AITool[] = [
   createCategory,
   applyCategoryOverride,
   updateCategory,
-  deleteCategory,
 ];
