@@ -37,6 +37,7 @@ export function Income() {
     const totals: Record<string, number> = {};
     for (const c of credits) {
       if (c.gelAmount === null) continue;
+      if (c.excludedFromAnalytics) continue;
       const k = monthKey(c.transactionDate);
       if (!keys.includes(k)) continue;
       totals[k] = (totals[k] || 0) + c.gelAmount;
@@ -58,6 +59,7 @@ export function Income() {
       category: "other",
       rawMessage: c.rawMessage,
       counterparty: c.counterparty,
+      excludedFromAnalytics: c.excludedFromAnalytics,
     }));
   }, [credits]);
 
@@ -103,6 +105,7 @@ export function Income() {
     const map: Record<string, { name: string; total: number; count: number }> = {};
     for (const c of credits) {
       if (c.gelAmount === null) continue;
+      if (c.excludedFromAnalytics) continue;
       if (!isInRange(c.transactionDate, range)) continue;
       const name = c.counterparty || "—";
       if (!map[name]) map[name] = { name, total: 0, count: 0 };
@@ -315,6 +318,7 @@ export function Income() {
                 // continue to render in their original currency below.
                 const dayTotal = items.reduce((s, t) => {
                   const c = credits.find((cc) => cc.id === t.id);
+                  if (c?.excludedFromAnalytics) return s;
                   return s + (c?.gelAmount ?? 0);
                 }, 0);
                 const diff = Math.floor((today.getTime() - d.getTime()) / 86400000);

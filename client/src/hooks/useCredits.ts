@@ -36,10 +36,14 @@ export function useRangeCredits(range: DateRange) {
     // `total` sums every currency converted to GEL; `count` reflects rows
     // that have actually contributed (i.e. either GEL or non-GEL with a
     // resolved rate). Rows still waiting on a rate are kept in `credits`
-    // but excluded from the totals until the rate lands.
+    // but excluded from the totals until the rate lands. User-excluded
+    // credits (excludedFromAnalytics: true) are also skipped from
+    // totals/counts but kept in the returned `credits` array so the
+    // /income ledger still shows them with an excluded indicator.
     let total = 0;
     let count = 0;
     for (const c of inRange) {
+      if (c.excludedFromAnalytics) continue;
       if (c.gelAmount === null) continue;
       total += c.gelAmount;
       count += 1;

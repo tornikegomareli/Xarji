@@ -20,6 +20,11 @@ export interface InkTx {
   rawMessage?: string;
   plusEarned?: number;
   counterparty?: string;
+  /** When true, the row renders an "Excluded" pill and dims the
+   *  amount so the user can tell at a glance which rows are sitting
+   *  out of analytics. The actual filtering happens in the
+   *  aggregator hooks; this is purely a display flag. */
+  excludedFromAnalytics?: boolean;
 }
 
 export function TxRow({
@@ -116,6 +121,7 @@ export function TxRow({
           {failed && <Pill>Declined</Pill>}
           {credit && <Pill bg="rgba(75,217,162,0.15)" color={T.green}>Income</Pill>}
           {isFx && <Pill bg={T.panelAlt} color={T.muted}>{t.currency}</Pill>}
+          {t.excludedFromAnalytics && <Pill bg={T.panelAlt} color={T.dim}>Excluded</Pill>}
         </div>
         <div
           style={{
@@ -206,6 +212,10 @@ export function TxRow({
               fontWeight: 700,
               letterSpacing: -0.2,
               fontVariantNumeric: "tabular-nums",
+              // Dim the amount on excluded rows so the user can tell
+              // at a glance the row isn't part of any total.
+              opacity: t.excludedFromAnalytics ? 0.5 : 1,
+              textDecoration: t.excludedFromAnalytics ? "line-through" : undefined,
             }}
           >
             {credit ? "+" : "−"}

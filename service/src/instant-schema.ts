@@ -24,6 +24,12 @@ const schema = i.schema({
       plusTotal: i.number().optional(),
       bankSenderId: i.string().indexed(),
       rawMessage: i.string(),
+      // Client-managed flag — when true, the dashboard hides this
+      // transaction from spending aggregates (donut, totals, trends,
+      // signals) but keeps it visible in the /transactions ledger.
+      // The service never sets this; it just persists what the client
+      // writes through to InstantDB.
+      excludedFromAnalytics: i.boolean().optional(),
     }),
 
     // Failed payment attempts
@@ -55,6 +61,10 @@ const schema = i.schema({
       syncedAt: i.date(),
       bankSenderId: i.string().indexed(),
       rawMessage: i.string(),
+      // Same as payments.excludedFromAnalytics — client-managed flag
+      // that hides this credit from Income aggregates while keeping
+      // it visible in the /income ledger.
+      excludedFromAnalytics: i.boolean().optional(),
     }),
 
     // User-defined categories shown on the dashboard. Managed by the

@@ -33,6 +33,25 @@ export function useConvertedPayments() {
   return { payments: converted, isLoading, error };
 }
 
+/**
+ * Toggle the `excludedFromAnalytics` flag on a payment or credit. The
+ * caller passes `kind` so we hit the right collection — both schemas
+ * have the same field, but they're separate entities.
+ *
+ * Used by the transaction detail panel toggle and by the assistant's
+ * exclude_transaction / include_transaction tools. Both surfaces
+ * share this hook so the InstantDB write happens in exactly one place.
+ */
+export function useTransactionExclude() {
+  return async (kind: "payment" | "credit", id: string, excluded: boolean) => {
+    if (kind === "payment") {
+      await db.transact(db.tx.payments[id].update({ excludedFromAnalytics: excluded }));
+    } else {
+      await db.transact(db.tx.credits[id].update({ excludedFromAnalytics: excluded }));
+    }
+  };
+}
+
 export function useFailedPayments() {
   const { data, isLoading, error } = db.useQuery({ failedPayments: {} });
 

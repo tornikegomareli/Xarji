@@ -56,6 +56,7 @@ export function Dashboard() {
   const byCategory = useMemo(() => {
     const map: Record<string, { total: number; count: number; meta: InkCategory }> = {};
     for (const p of payments) {
+      if (p.excludedFromAnalytics) continue;
       if (p.gelAmount === null) continue;
       if (!isWithinInterval(new Date(p.transactionDate), { start: range.start, end: range.end })) continue;
       const cat = getCategory(p.merchant, p.rawMessage);
@@ -85,6 +86,7 @@ export function Dashboard() {
         category: getCategory(p.merchant, p.rawMessage).id,
         rawMessage: p.rawMessage,
         plusEarned: p.plusEarned,
+        excludedFromAnalytics: p.excludedFromAnalytics,
       })),
       ...failedPayments.map((f) => ({
         id: f.id,
@@ -106,6 +108,7 @@ export function Dashboard() {
         merchant: c.counterparty || "Income",
         rawMerchant: c.rawMessage,
         amount: c.amount,
+        excludedFromAnalytics: c.excludedFromAnalytics,
         currency: c.currency,
         cardLastDigits: c.cardLastDigits,
         transactionDate: c.transactionDate,

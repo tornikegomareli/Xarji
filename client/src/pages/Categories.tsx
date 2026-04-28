@@ -85,6 +85,7 @@ export function Categories() {
   const cats: CatAgg[] = useMemo(() => {
     const map: Record<string, CatAgg> = {};
     for (const p of monthPayments) {
+      if (p.excludedFromAnalytics) continue;
       if (p.gelAmount === null) continue;
       const cat = getCategory(p.merchant, p.rawMessage);
       if (!map[cat.id]) map[cat.id] = { cat: cat.id, total: 0, count: 0, meta: cat };
@@ -139,6 +140,7 @@ export function Categories() {
       perCat[c.id] = keys.map((k) => ({ key: k, value: 0 }));
     }
     for (const p of payments) {
+      if (p.excludedFromAnalytics) continue;
       if (p.gelAmount === null) continue;
       const k = monthKey(p.transactionDate);
       const idx = keys.indexOf(k);
@@ -152,6 +154,7 @@ export function Categories() {
   const selMerchants = useMemo(() => {
     const map: Record<string, { merchant: string; total: number; count: number }> = {};
     for (const p of monthPayments) {
+      if (p.excludedFromAnalytics) continue;
       if (p.gelAmount === null) continue;
       const cid = categorizeId(p.merchant, p.rawMessage);
       if (cid !== selectedId) continue;
@@ -179,6 +182,7 @@ export function Categories() {
         bankSenderId: p.bankSenderId,
         category: selectedId || "",
         rawMessage: p.rawMessage,
+        excludedFromAnalytics: p.excludedFromAnalytics,
       }));
   }, [monthPayments, selectedId]);
 

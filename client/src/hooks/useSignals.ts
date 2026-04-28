@@ -17,7 +17,13 @@ export function useSignals() {
     // waiting on a rate (gelAmount === null) sit out. Largest-tx and
     // new-merchant detection still see the full set: those don't sum
     // amounts, they look at the row's existence + merchant string.
-    const monthPaymentsAll = payments.filter((p) => inMonth(p.transactionDate));
+    // User-excluded transactions (excludedFromAnalytics) are skipped
+    // from EVERY signal — the user explicitly said this isn't real
+    // spending, so it shouldn't trigger a large-tx alert or count as
+    // a new merchant.
+    const monthPaymentsAll = payments.filter(
+      (p) => !p.excludedFromAnalytics && inMonth(p.transactionDate)
+    );
     const monthPaymentsForSums = monthPaymentsAll.filter((p) => p.gelAmount !== null);
 
     const repeatedMap: Record<string, number> = {};
@@ -36,7 +42,7 @@ export function useSignals() {
     const ninetyStart = subDays(now, 90);
     const priorMerchants = new Set(
       payments
-        .filter((p) => new Date(p.transactionDate) < monthStart && new Date(p.transactionDate) > ninetyStart)
+        .filter((p) => !p.excludedFromAnalytics && new Date(p.transactionDate) < monthStart && new Date(p.transactionDate) > ninetyStart)
         .map((p) => p.merchant || "")
         .filter(Boolean)
     );

@@ -49,6 +49,7 @@ const getMonthSummary: AITool = {
 
     for (const p of ctx.payments) {
       if (!inMonth(p.transactionDate) || p.gelAmount === null) continue;
+      if (p.excludedFromAnalytics) continue;
       totalSpent += p.gelAmount;
       txCount += 1;
       const merchant = p.merchant || "Unknown";
@@ -67,6 +68,7 @@ const getMonthSummary: AITool = {
     let incomeCount = 0;
     for (const c of ctx.credits) {
       if (!inMonth(c.transactionDate) || c.gelAmount === null) continue;
+      if (c.excludedFromAnalytics) continue;
       totalIncome += c.gelAmount;
       incomeCount += 1;
     }
@@ -102,17 +104,18 @@ const searchTransactions: AITool = {
   definition: {
     name: "search_transactions",
     description:
-      "Filter transactions by free-text query, category, currency, amount range, and date range. Returns up to 50 matches with key fields. Use this when the user asks for specific transactions or a precise filter.",
+      "Filter both outgoing payments and incoming credits by free-text query, category, currency, amount range, date range, and kind. Returns up to 50 matches with their InstantDB `id` and `kind` ('payment' or 'credit'), which `exclude_transaction` / `include_transaction` need. Each row also includes its current `excludedFromAnalytics` flag so you can re-include rows the user already hid.",
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "Substring matched against merchant + raw SMS message (case-insensitive)." },
-        category: { type: "string", description: "Category name (e.g. 'Groceries', 'Subscriptions')." },
+        query: { type: "string", description: "Substring matched against merchant/counterparty + raw SMS message (case-insensitive)." },
+        category: { type: "string", description: "Category name (e.g. 'Groceries', 'Subscriptions'). Only applied to payments." },
         currency: { type: "string", description: "Currency code (GEL, USD, EUR)." },
         minAmount: { type: "number", description: "Minimum GEL-equivalent amount." },
         maxAmount: { type: "number", description: "Maximum GEL-equivalent amount." },
         dateFrom: { type: "string", description: "ISO date (YYYY-MM-DD) — inclusive." },
         dateTo: { type: "string", description: "ISO date (YYYY-MM-DD) — inclusive." },
+        kind: { type: "string", enum: ["payment", "credit", "any"], description: "'payment' (outgoing only), 'credit' (incoming only), or 'any' (both). Defaults to 'any'." },
         limit: { type: "integer", minimum: 1, maximum: 100, description: "Max rows to return (default 20)." },
       },
     },
@@ -132,37 +135,94 @@ const searchTransactions: AITool = {
     const from = typeof input.dateFrom === "string" ? startOfDay(new Date(input.dateFrom)).getTime() : null;
     const to = typeof input.dateTo === "string" ? endOfDay(new Date(input.dateTo)).getTime() : null;
     const limit = typeof input.limit === "number" ? Math.min(100, Math.max(1, input.limit)) : 20;
+    const kind = typeof input.kind === "string" ? input.kind : "any";
 
-    const matches = ctx.payments
-      .filter((p) => {
+    type Row = {
+      id: string;
+      kind: "payment" | "credit";
+      date: string;
+      transactionDate: number;
+      merchant: string;
+      amount: number;
+      currency: string;
+      gelAmount: number | null;
+      category: string | null;
+      card: string | null;
+      excludedFromAnalytics: boolean;
+    };
+
+    const rows: Row[] = [];
+
+    if (kind !== "credit") {
+      for (const p of ctx.payments) {
         if (query) {
           const haystack = `${p.merchant ?? ""} ${p.rawMessage ?? ""}`.toLowerCase();
-          if (!haystack.includes(query)) return false;
+          if (!haystack.includes(query)) continue;
         }
         if (category) {
           const cat = ctx.categorizeName(p.merchant ?? null).toLowerCase();
-          if (cat !== category) return false;
+          if (cat !== category) continue;
         }
-        if (currency && p.currency.toUpperCase() !== currency) return false;
+        if (currency && p.currency.toUpperCase() !== currency) continue;
         const amt = p.gelAmount ?? 0;
-        if (min !== null && amt < min) return false;
-        if (max !== null && amt > max) return false;
-        if (from !== null && p.transactionDate < from) return false;
-        if (to !== null && p.transactionDate > to) return false;
-        return true;
-      })
-      .slice(0, limit)
-      .map((p) => ({
-        date: format(new Date(p.transactionDate), "yyyy-MM-dd HH:mm"),
-        merchant: p.merchant ?? "Unknown",
-        amount: p.amount,
-        currency: p.currency,
-        gelAmount: p.gelAmount !== null ? Math.round(p.gelAmount) : null,
-        category: ctx.categorizeName(p.merchant ?? null),
-        card: p.cardLastDigits ?? null,
-      }));
+        if (min !== null && amt < min) continue;
+        if (max !== null && amt > max) continue;
+        if (from !== null && p.transactionDate < from) continue;
+        if (to !== null && p.transactionDate > to) continue;
+        rows.push({
+          id: p.id,
+          kind: "payment",
+          date: format(new Date(p.transactionDate), "yyyy-MM-dd HH:mm"),
+          transactionDate: p.transactionDate,
+          merchant: p.merchant ?? "Unknown",
+          amount: p.amount,
+          currency: p.currency,
+          gelAmount: p.gelAmount !== null ? Math.round(p.gelAmount) : null,
+          category: ctx.categorizeName(p.merchant ?? null),
+          card: p.cardLastDigits ?? null,
+          excludedFromAnalytics: p.excludedFromAnalytics === true,
+        });
+      }
+    }
 
-    return { matchCount: matches.length, transactions: matches };
+    if (kind !== "payment") {
+      // Credits don't have a category dimension; if the model passed
+      // `category` we just skip credits in this call rather than match
+      // none — the kind filter is the right knob if the model wants to
+      // narrow further.
+      const skipCredits = category !== null;
+      if (!skipCredits) {
+        for (const c of ctx.credits) {
+          if (query) {
+            const haystack = `${c.counterparty ?? ""} ${c.rawMessage ?? ""}`.toLowerCase();
+            if (!haystack.includes(query)) continue;
+          }
+          if (currency && c.currency.toUpperCase() !== currency) continue;
+          const amt = c.gelAmount ?? 0;
+          if (min !== null && amt < min) continue;
+          if (max !== null && amt > max) continue;
+          if (from !== null && c.transactionDate < from) continue;
+          if (to !== null && c.transactionDate > to) continue;
+          rows.push({
+            id: c.id,
+            kind: "credit",
+            date: format(new Date(c.transactionDate), "yyyy-MM-dd HH:mm"),
+            transactionDate: c.transactionDate,
+            merchant: c.counterparty ?? "Income",
+            amount: c.amount,
+            currency: c.currency,
+            gelAmount: c.gelAmount !== null ? Math.round(c.gelAmount) : null,
+            category: null,
+            card: c.cardLastDigits ?? null,
+            excludedFromAnalytics: c.excludedFromAnalytics === true,
+          });
+        }
+      }
+    }
+
+    rows.sort((a, b) => b.transactionDate - a.transactionDate);
+    const transactions = rows.slice(0, limit).map(({ transactionDate: _td, ...rest }) => rest);
+    return { matchCount: transactions.length, transactions };
   },
 };
 
@@ -198,12 +258,14 @@ const compareMonths: AITool = {
       const cats = new Map<string, number>();
       for (const p of ctx.payments) {
         if (!inRange(p.transactionDate) || p.gelAmount === null) continue;
+        if (p.excludedFromAnalytics) continue;
         spent += p.gelAmount;
         const cat = ctx.categorizeName(p.merchant ?? null);
         cats.set(cat, (cats.get(cat) ?? 0) + p.gelAmount);
       }
       for (const c of ctx.credits) {
         if (!inRange(c.transactionDate) || c.gelAmount === null) continue;
+        if (c.excludedFromAnalytics) continue;
         income += c.gelAmount;
       }
       return {
@@ -243,6 +305,7 @@ const listCategories: AITool = {
     const monthTotals = new Map<string, { total: number; count: number }>();
     for (const p of ctx.payments) {
       if (!inMonth(p.transactionDate) || p.gelAmount === null) continue;
+      if (p.excludedFromAnalytics) continue;
       const cat = ctx.categorizeName(p.merchant ?? null);
       const v = monthTotals.get(cat) ?? { total: 0, count: 0 };
       v.total += p.gelAmount;

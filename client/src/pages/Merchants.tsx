@@ -32,6 +32,7 @@ export function Merchants() {
     const map: Record<string, MerchantAgg> = {};
     for (const p of payments) {
       if (p.gelAmount === null) continue;
+      if (p.excludedFromAnalytics) continue;
       if (!isInRange(p.transactionDate, range)) continue;
       const key = p.merchant || "Unknown";
       const raw = p.rawMessage || "";

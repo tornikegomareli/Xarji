@@ -18,6 +18,13 @@ const schema = i.schema({
       plusTotal: i.number().optional(),
       bankSenderId: i.string().indexed(),
       rawMessage: i.string(),
+      // User-toggled flag that hides this transaction from spending
+      // aggregates (Dashboard hero, donut, top-merchants, trends,
+      // signals). The transaction stays visible in the /transactions
+      // ledger with a small "excluded" pill so the user can audit
+      // and un-hide it. Optional / defaults to false for existing
+      // rows that predate this field.
+      excludedFromAnalytics: i.boolean().optional(),
     }),
     failedPayments: i.entity({
       transactionId: i.string().unique(),
@@ -65,6 +72,10 @@ const schema = i.schema({
       syncedAt: i.number(),
       bankSenderId: i.string().indexed(),
       rawMessage: i.string(),
+      // Same as payments.excludedFromAnalytics — hides the credit
+      // from Income aggregates while keeping it visible in the
+      // /income ledger with an excluded indicator.
+      excludedFromAnalytics: i.boolean().optional(),
     }),
   },
   links: {},
@@ -140,6 +151,7 @@ export type Payment = {
   plusTotal?: number;
   bankSenderId: string;
   rawMessage: string;
+  excludedFromAnalytics?: boolean;
 };
 
 export type FailedPayment = {
@@ -194,4 +206,5 @@ export type Credit = {
   syncedAt: number;
   bankSenderId: string;
   rawMessage: string;
+  excludedFromAnalytics?: boolean;
 };

@@ -270,8 +270,96 @@ const updateCategory: AITool = {
 // a single mistaken model call. The assistant describes the
 // deletion the user might want and points at /categories' × button.
 
+const setTransactionExclusion = (kind: "exclude" | "include"): AITool => {
+  const isExcluding = kind === "exclude";
+  return {
+    definition: {
+      name: isExcluding ? "exclude_transaction" : "include_transaction",
+      description: isExcluding
+        ? "Hides a single transaction from analytics — the row stays in the /transactions or /income ledger but doesn't count toward totals, the donut, top merchants, trends, or signals. AUTO-APPLIES (fully reversible: call include_transaction on the same id to restore). Use this when the user says something like 'don't count that ₾4280 IKEA purchase, it was for someone else' or 'exclude this transaction from my spending math'."
+        : "Re-includes a previously excluded transaction in analytics. AUTO-APPLIES. Use when the user changes their mind or says 'include that back'. To find the right id, call search_transactions and look for ones the user is referring to.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description:
+              "The transaction id (matches the InstantDB row id from search_transactions or compare_months). Required.",
+          },
+          kind: {
+            type: "string",
+            enum: ["payment", "credit"],
+            description:
+              "Whether the id refers to a payment (debit / outgoing) or a credit (incoming). Defaults to 'payment'.",
+          },
+        },
+        required: ["id"],
+      },
+    },
+    statusText: isExcluding ? "Excluding the transaction…" : "Re-including the transaction…",
+    executor: async (input, ctx) => {
+      const id = typeof input.id === "string" ? input.id : "";
+      if (!id) throw new Error("`id` is required.");
+      const kindInput = typeof input.kind === "string" ? input.kind : "payment";
+      if (kindInput !== "payment" && kindInput !== "credit") {
+        throw new Error("`kind` must be 'payment' or 'credit'.");
+      }
+
+      // Validate the id resolves to a real row. Without this, a
+      // mistyped id silently writes a stub row; better to surface as
+      // a tool error so the model can correct.
+      const tx = kindInput === "payment"
+        ? ctx.payments.find((p) => p.id === id)
+        : ctx.credits.find((c) => c.id === id);
+      if (!tx) {
+        throw new Error(
+          `No ${kindInput} with id "${id}". Use search_transactions or list recent transactions to discover valid ids.`
+        );
+      }
+
+      // No-op if already in the desired state — surface as a tool
+      // result so the model can tell the user nothing changed.
+      const currentlyExcluded = !!tx.excludedFromAnalytics;
+      // Resolve a display name without leaning on TS's discriminated
+      // union narrowing, which doesn't carry through `kindInput`.
+      const displayName =
+        kindInput === "payment"
+          ? (tx as { merchant?: string }).merchant
+          : (tx as { counterparty?: string }).counterparty;
+
+      if (currentlyExcluded === isExcluding) {
+        return {
+          id,
+          kind: kindInput,
+          merchant: displayName,
+          alreadyInState: true,
+          excluded: isExcluding,
+        };
+      }
+
+      const collection = kindInput === "payment" ? db.tx.payments : db.tx.credits;
+      await db.transact(collection[id].update({ excludedFromAnalytics: isExcluding }));
+
+      return {
+        id,
+        kind: kindInput,
+        merchant: displayName,
+        amount: tx.amount,
+        currency: tx.currency,
+        excluded: isExcluding,
+        applied: true,
+      };
+    },
+  };
+};
+
+const excludeTransaction = setTransactionExclusion("exclude");
+const includeTransaction = setTransactionExclusion("include");
+
 export const WRITE_TOOLS: AITool[] = [
   createCategory,
   applyCategoryOverride,
   updateCategory,
+  excludeTransaction,
+  includeTransaction,
 ];

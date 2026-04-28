@@ -4,7 +4,7 @@ import { useTheme, useViewport, type InkTheme } from "../ink/theme";
 import { Card, CardLabel, PageHeader } from "../ink/primitives";
 import { TxRow, type InkTx } from "../ink/TxRow";
 import { CategoryPicker } from "../components/CategoryPicker";
-import { useConvertedPayments, useFailedPayments } from "../hooks/useTransactions";
+import { useConvertedPayments, useFailedPayments, useTransactionExclude } from "../hooks/useTransactions";
 import { useBankSenders } from "../hooks/useBankSenders";
 import { useRangeState } from "../hooks/useRangeState";
 import { isInRange, isValidIsoDateRange } from "../lib/dateRange";
@@ -18,6 +18,7 @@ export function Transactions() {
   const vp = useViewport();
   const { payments } = useConvertedPayments();
   const { failedPayments } = useFailedPayments();
+  const setExcluded = useTransactionExclude();
   const { senders } = useBankSenders();
   const { categorize: categorizeId, allCategories } = useCategorizer();
   // Drill-down search params accepted on first paint. Anything that doesn't
@@ -65,6 +66,7 @@ export function Transactions() {
         category: categorizeId(p.merchant, p.rawMessage),
         rawMessage: p.rawMessage,
         plusEarned: p.plusEarned,
+        excludedFromAnalytics: p.excludedFromAnalytics,
       })),
       ...failedPayments.map((f) => ({
         id: f.id,
@@ -279,9 +281,13 @@ export function Transactions() {
                 // skipped — they have no amount. Rows still waiting on a
                 // rate (gelAmount === null) are also skipped this render
                 // and snap into the total once the fetch resolves.
+                // User-excluded rows skip the total too — their amount
+                // shouldn't bump the day's spend even though they
+                // remain visible in the list.
                 const successItems = items.filter((t) => t.kind === "payment");
                 const total = successItems.reduce((s, t) => {
                   const p = payments.find((pp) => pp.id === t.id);
+                  if (p?.excludedFromAnalytics) return s;
                   return s + (p?.gelAmount ?? 0);
                 }, 0);
                 const hasGelActivity = total > 0;
@@ -381,6 +387,19 @@ export function Transactions() {
               ) : (
                 <DetailRow T={T} k="Points" v={selected.plusEarned ? `+${selected.plusEarned}` : "—"} />
               )}
+              {selected.kind !== "failed" && (
+                <ExcludeToggleRow
+                  T={T}
+                  excluded={!!selected.excludedFromAnalytics}
+                  onToggle={async (next) => {
+                    await setExcluded(
+                      selected.kind === "credit" ? "credit" : "payment",
+                      selected.id,
+                      next
+                    );
+                  }}
+                />
+              )}
             </div>
             <div style={{ marginTop: 18 }}>
               <CardLabel>Raw SMS</CardLabel>
@@ -414,6 +433,58 @@ function DetailRow({ T, k, v }: { T: InkTheme; k: string; v: string }) {
     <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${T.line}` }}>
       <span style={{ fontSize: 12, color: T.muted, fontFamily: T.sans }}>{k}</span>
       <span style={{ fontSize: 12.5, color: T.text, fontFamily: T.sans, fontWeight: 600 }}>{v}</span>
+    </div>
+  );
+}
+
+/**
+ * Detail-panel toggle that flips a transaction's `excludedFromAnalytics`
+ * flag. The row stays visible in the /transactions ledger either way;
+ * the flag only affects whether it counts in totals / donut / trend /
+ * signals. Wires through useTransactionExclude (shared with the AI
+ * tools) so the InstantDB write happens in one place.
+ */
+function ExcludeToggleRow({
+  T,
+  excluded,
+  onToggle,
+}: {
+  T: InkTheme;
+  excluded: boolean;
+  onToggle: (next: boolean) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const handle = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onToggle(!excluded);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${T.line}` }}>
+      <span style={{ fontSize: 12, color: T.muted, fontFamily: T.sans }}>In analytics</span>
+      <button
+        type="button"
+        onClick={handle}
+        disabled={busy}
+        title={excluded ? "Include this transaction in analytics" : "Exclude this transaction from analytics"}
+        style={{
+          padding: "4px 10px",
+          borderRadius: 999,
+          border: `1px solid ${T.line}`,
+          background: excluded ? T.panelAlt : "transparent",
+          color: excluded ? T.dim : T.text,
+          fontSize: 11.5,
+          fontWeight: 600,
+          fontFamily: T.sans,
+          cursor: busy ? "not-allowed" : "pointer",
+        }}
+      >
+        {excluded ? "Excluded · re-include" : "Included · exclude"}
+      </button>
     </div>
   );
 }

@@ -8,6 +8,7 @@ export function useMonthlyTrend(months: number = 9) {
   return useMemo(() => {
     const totals: Record<string, number> = {};
     for (const p of payments) {
+      if (p.excludedFromAnalytics) continue;
       if (p.gelAmount === null) continue;
       const k = monthKey(p.transactionDate);
       totals[k] = (totals[k] || 0) + p.gelAmount;

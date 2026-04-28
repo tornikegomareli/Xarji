@@ -64,6 +64,10 @@ export function useRangeStats(range: DateRange) {
     let prevTotal = 0;
     let prevCount = 0;
     for (const p of payments) {
+      // Skip user-excluded transactions from analytics. They stay in
+      // the /transactions ledger but don't count toward totals,
+      // averages, or vs-prior-period deltas.
+      if (p.excludedFromAnalytics) continue;
       const cur = inCur(p.transactionDate);
       const previous = !cur && inPrev(p.transactionDate);
       if (!cur && !previous) continue;
@@ -107,6 +111,7 @@ export function useRangeSpendingByDay(range: DateRange) {
     const buckets: Record<string, number> = {};
 
     for (const p of payments) {
+      if (p.excludedFromAnalytics) continue;
       if (!isInRange(p.transactionDate, range)) continue;
       if (p.gelAmount === null) continue;
       const d = new Date(p.transactionDate);
@@ -144,6 +149,7 @@ export function useRangeTopMerchants(range: DateRange, limit: number = 10) {
   return useMemo(() => {
     const merchantTotals: Record<string, { total: number; count: number }> = {};
     for (const p of payments) {
+      if (p.excludedFromAnalytics) continue;
       if (!isInRange(p.transactionDate, range)) continue;
       if (p.gelAmount === null) continue;
       const merchant = p.merchant || "Unknown";
@@ -177,6 +183,7 @@ export function useRangeCategoryAnalytics(range: DateRange) {
     }
 
     for (const payment of payments) {
+      if (payment.excludedFromAnalytics) continue;
       if (!isInRange(payment.transactionDate, range)) continue;
       if (payment.gelAmount === null) continue;
       const categoryName = categorizeName(payment.merchant ?? null);
