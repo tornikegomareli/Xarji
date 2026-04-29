@@ -45,6 +45,28 @@ const schema = i.schema({
       color: i.string(),
       icon: i.string(),
       isDefault: i.boolean(),
+      // Flex-budgeting fields (all optional, all client-managed). See
+      // service-side schema for full descriptions. Categories without
+      // a `bucket` are unclassified and only show in the /budgets
+      // setup wizard.
+      bucket: i.string().optional(),
+      targetAmount: i.number().optional(),
+      frequencyMonths: i.number().optional(),
+      rolloverEnabled: i.boolean().optional(),
+    }),
+    // Per-month flex-budgeting plan, keyed on "YYYY-MM". Holds the
+    // user's expected-income override + flex-pool override + savings
+    // target for that month. Phase 1 reads/writes only the current
+    // month; Phase 2 walks prior months for rollover math.
+    budgetPlans: i.entity({
+      planMonth: i.string().unique(),
+      expectedIncome: i.number(),
+      expectedIncomeAuto: i.boolean(),
+      flexPool: i.number(),
+      flexPoolAuto: i.boolean(),
+      savingsTarget: i.number().optional(),
+      createdAt: i.number(),
+      updatedAt: i.number(),
     }),
     bankSenders: i.entity({
       senderId: i.string().unique(),
@@ -181,6 +203,28 @@ export type Category = {
   color: string;
   icon: string;
   isDefault: boolean;
+  // Stored as a free-form string in InstantDB (the schema's
+  // `i.string().optional()` resolves to `string | undefined` at the
+  // type level). Consumers narrow to the Bucket literal union via
+  // `lib/budgets.ts`'s BUCKETS check before reading it as one of
+  // the three valid values; an unrecognised string is treated as
+  // unclassified.
+  bucket?: string;
+  targetAmount?: number;
+  frequencyMonths?: number;
+  rolloverEnabled?: boolean;
+};
+
+export type BudgetPlan = {
+  id: string;
+  planMonth: string;
+  expectedIncome: number;
+  expectedIncomeAuto: boolean;
+  flexPool: number;
+  flexPoolAuto: boolean;
+  savingsTarget?: number;
+  createdAt: number;
+  updatedAt: number;
 };
 
 export type BankSender = {

@@ -7,7 +7,13 @@ import type { AIToolDefinition } from "../types";
 import type { AIBlock } from "../../aiThreads";
 import type { ConvertedPayment } from "../../../hooks/useTransactions";
 import type { ConvertedCredit } from "../../../hooks/useCredits";
-import type { FailedPayment, Category, BankSender, MerchantCategoryOverride } from "../../instant";
+import type {
+  FailedPayment,
+  Category,
+  BankSender,
+  MerchantCategoryOverride,
+  BudgetPlan,
+} from "../../instant";
 import type { InkCategory } from "../../utils";
 
 /** A snapshot getter that returns the freshest value available at the
@@ -23,9 +29,13 @@ export interface AIToolContext {
   payments: ConvertedPayment[];
   credits: ConvertedCredit[];
   failedPayments: FailedPayment[];
-  /** Raw DB-backed category rows. Use sparingly — most tools should
-   *  prefer `getAllCategories()` which merges DEFAULT_CATEGORIES so
-   *  tools can target defaults that aren't yet persisted in DB. */
+  /** Snapshot of DB-backed category rows captured at agent-run start.
+   *  Sufficient for read-only flows that don't depend on writes earlier
+   *  in the same agentic loop. Tools that need to see fresh state across
+   *  chained writes (e.g. `set_category_target` reading the bucket
+   *  `set_category_bucket` just set) should use `getCategories()` below
+   *  instead. Most tools should prefer `getAllCategories()` for the
+   *  merged InkCategory list. */
   categories: Category[];
   bankSenders: BankSender[];
   /** Live merchant-override rows. Write tools (apply_category_override)
@@ -41,6 +51,14 @@ export interface AIToolContext {
    *  static `autoCategorize` so an "I moved Spotify to Subscriptions"
    *  override actually shows up in the AI's view of the data. */
   categorizeName: (merchant: string | null | undefined) => string;
+  /** Override-aware category-id lookup. Same priority order as the
+   *  page's categoriser: per-transaction override (when paymentId
+   *  given) > per-merchant override > regex on merchant + raw SMS.
+   *  Use this from analytics tools that need to bucket transactions
+   *  by category id; passing `paymentId` ensures per-transaction
+   *  overrides land in the right bucket so AI numbers match what
+   *  /budgets, /categories, and the donut display. */
+  categorize: (merchant: string | null | undefined, raw?: string | null, paymentId?: string | null) => string;
   /** Returns the merged category list (DEFAULT_CATEGORIES + DB rows,
    *  deduped by name with DB winning). Use this from tools that need
    *  to expose categories to the model (list_categories) or validate
@@ -52,6 +70,18 @@ export interface AIToolContext {
    *  getAllCategories — use this from write tools that need to find
    *  an existing row's id. */
   getOverrides: Live<MerchantCategoryOverride[]>;
+  /** Returns live raw category rows (with bucket/target/etc fields).
+   *  Use this from chained budget write tools where the second call
+   *  needs to see the bucket / target the first call just set —
+   *  `ctx.categories` is captured at agent-run start and would be
+   *  stale across in-loop writes. (Codex P2 on PR #42.) */
+  getCategories: Live<Category[]>;
+  /** Live budget-plan rows (one per "YYYY-MM" the user has saved
+   *  changes for). Budget read tools use this to expose the current
+   *  flex pool / expected income; write tools use it to find an
+   *  existing row's id for upsert decisions instead of calling
+   *  db.queryOnce (which the demo DB doesn't implement). */
+  getPlans: Live<BudgetPlan[]>;
 }
 
 export interface AITool {

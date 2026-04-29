@@ -244,7 +244,13 @@ export function Dashboard() {
 
           <CashflowBar T={T} income={income} spent={stats.total} />
           {T.chartsVisible && trendData.length > 0 && (
-            <div style={{ marginTop: 22 }}>
+            // Wrapper width matches the chart's so the bottom labels
+            // line up with the chart's data points. Without this, the
+            // labels container fills the Card width while the chart
+            // stays at 640px on wide screens — APR ends up under the
+            // empty space right of the chart while the actual data dot
+            // is at the chart's right edge (~JAN-aligned in screenshots).
+            <div style={{ marginTop: 22, width: 640, maxWidth: "100%" }}>
               <AreaChart
                 data={trendData}
                 width={640}
