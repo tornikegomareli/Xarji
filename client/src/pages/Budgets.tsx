@@ -42,7 +42,7 @@ export function Budgets() {
     <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap, height: "100%" }}>
       <PageHeader
         eyebrow={`Plan for ${format(new Date(), "MMMM yyyy")}`}
-        title="Budgets"
+        title="Flex Budgeting"
         rightSlot={
           <Pill bg={T.accentSoft} color={T.accent}>
             {summary.byBucket.unclassified.length} unclassified

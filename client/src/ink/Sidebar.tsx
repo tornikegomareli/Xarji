@@ -27,9 +27,9 @@ export function Sidebar({
     { to: "/transactions", name: "Transactions", glyph: "≡", badge: txCount ? txCount.toLocaleString("en-US") : undefined },
     { to: "/income", name: "Income", glyph: "↓", badge: incomeCount ? incomeCount.toLocaleString("en-US") : undefined },
     { to: "/categories", name: "Categories", glyph: "◐" },
-    { to: "/budgets", name: "Budgets", glyph: "◇", pillBadge: "NEW" },
+    { to: "/budgets", name: "Flex Budgeting", glyph: "◇" },
     { to: "/merchants", name: "Merchants", glyph: "◆" },
-    { to: "/assistant", name: "Assistant", glyph: "✧", pillBadge: "NEW" },
+    { to: "/assistant", name: "Assistant", glyph: "✧" },
     { to: "/signals", name: "Signals", glyph: "✦", badge: signalsCount ? String(signalsCount) : undefined },
     { to: "/manage", name: "Manage", glyph: "⚙" },
   ];
