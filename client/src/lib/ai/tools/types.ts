@@ -47,6 +47,14 @@ export interface AIToolContext {
    *  static `autoCategorize` so an "I moved Spotify to Subscriptions"
    *  override actually shows up in the AI's view of the data. */
   categorizeName: (merchant: string | null | undefined) => string;
+  /** Override-aware category-id lookup. Same priority order as the
+   *  page's categoriser: per-transaction override (when paymentId
+   *  given) > per-merchant override > regex on merchant + raw SMS.
+   *  Use this from analytics tools that need to bucket transactions
+   *  by category id; passing `paymentId` ensures per-transaction
+   *  overrides land in the right bucket so AI numbers match what
+   *  /budgets, /categories, and the donut display. */
+  categorize: (merchant: string | null | undefined, raw?: string | null, paymentId?: string | null) => string;
   /** Returns the merged category list (DEFAULT_CATEGORIES + DB rows,
    *  deduped by name with DB winning). Use this from tools that need
    *  to expose categories to the model (list_categories) or validate

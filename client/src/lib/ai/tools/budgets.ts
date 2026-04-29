@@ -45,10 +45,9 @@ function planMonthMonth(key: string): number {
  *  read-only against the AIToolContext. Reused by both read tools so
  *  list_budgets_by_bucket and get_budget_summary agree on numbers. */
 function summarize(ctx: AIToolContext, planMonth: string) {
-  const categories = ctx.getAllCategories();
   // getAllCategories returns InkCategory which lacks bucket/target —
-  // walk the raw categories list instead. The merged version is for
-  // pickers; analytics need the DB row's full shape.
+  // walk the raw categories list (DB rows have the full shape we
+  // need). The merged version is for pickers.
   const dbCategories = ctx.categories;
   const monthStart = new Date(planMonthYear(planMonth), planMonthMonth(planMonth), 1).getTime();
   const monthEnd = new Date(planMonthYear(planMonth), planMonthMonth(planMonth) + 1, 1).getTime();
@@ -60,13 +59,12 @@ function summarize(ctx: AIToolContext, planMonth: string) {
   for (const p of ctx.payments) {
     if (p.gelAmount === null) continue;
     if (p.excludedFromAnalytics) continue;
-    // Use the same id-resolution path as the page so AI numbers match
-    // dashboard numbers. categorizeName returns the human name; we
-    // need the id for keying, so reach through the merged-category
-    // map by name.
-    const catName = ctx.categorizeName(p.merchant ?? null);
-    const merged = categories.find((c) => c.name === catName);
-    const catId = merged?.id ?? "other";
+    // Mirror the page's categoriser exactly: per-transaction override
+    // (paymentId) > per-merchant override > regex on merchant + raw
+    // SMS. Calling the id-returning variant here keeps the AI's
+    // numbers in lockstep with /budgets, /categories, and the donut.
+    // (Codex P2 on PR #42.)
+    const catId = ctx.categorize(p.merchant ?? null, p.rawMessage ?? null, p.id);
     const mKey = monthKeyFromTimestamp(p.transactionDate);
     const compoundKey = `${catId}::${mKey}`;
     monthlyActualsByCategory.set(
@@ -331,6 +329,21 @@ const clearCategoryBudget: AITool = {
 // Per-month plan upserts. Mirror the useBudgetMutations.upsertPlan
 // pattern: read plans via the live getter, decide insert-vs-update,
 // fall back to creating a fresh row keyed by id() if none exists.
+//
+// Module-scope memo for ids the AI just created. When the assistant
+// chains two plan-level writes in one agentic loop (e.g.
+// set_expected_income → set_flex_pool for a month with no prior
+// budgetPlans row), `ctx.getPlans()` still reflects the React
+// snapshot from before the first transact, so the second call's
+// existence check would also miss the row and double-insert. The
+// real InstantDB write would then trip the unique `planMonth`
+// constraint; the demo DB silently duplicates. This memo lets the
+// second call see "yes, planMonth=2026-04 was just created with
+// id=X" and route to the update branch. Mapping is per-process and
+// only grows during the brief window of an agentic loop. (Codex P2
+// on PR #42.)
+const recentlyCreatedPlanIds = new Map<string, string>();
+
 async function upsertPlan(
   ctx: AIToolContext,
   planMonth: string,
@@ -338,11 +351,19 @@ async function upsertPlan(
 ) {
   const now = Date.now();
   const plans = ctx.getPlans();
-  const existing = plans.find((p) => p.planMonth === planMonth);
+  const existing =
+    plans.find((p) => p.planMonth === planMonth) ??
+    // The memo carries the id but not the row body, so we synthesize
+    // the minimum the existing-branch needs (just the id).
+    (() => {
+      const memoedId = recentlyCreatedPlanIds.get(planMonth);
+      return memoedId ? { id: memoedId } : null;
+    })();
   if (existing) {
     await db.transact(db.tx.budgetPlans[existing.id].update({ ...updates, updatedAt: now }));
   } else {
     const newId = id();
+    recentlyCreatedPlanIds.set(planMonth, newId);
     await db.transact(
       db.tx.budgetPlans[newId].update({
         planMonth,

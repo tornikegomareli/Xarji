@@ -142,7 +142,7 @@ export function useAgentRunner() {
   const { failedPayments } = useFailedPayments();
   const { categories } = useCategories();
   const { senders } = useBankSenders();
-  const { categorizeName, allCategories } = useCategorizer();
+  const { categorizeName, categorize, allCategories } = useCategorizer();
   const { overrides } = useMerchantOverrides();
   const { plans } = useBudgetPlans();
 
@@ -180,6 +180,7 @@ export function useAgentRunner() {
           overrides,
           now: new Date(),
           categorizeName,
+          categorize,
           // Getters that read fresh state via the ref — see comment on
           // liveRef above for the why. The non-getter fields above are
           // captured once for the run; tools that mutate state should
@@ -192,6 +193,6 @@ export function useAgentRunner() {
         signal,
       });
     },
-    [payments, credits, failedPayments, categories, senders, overrides, categorizeName]
+    [payments, credits, failedPayments, categories, senders, overrides, categorizeName, categorize]
   );
 }

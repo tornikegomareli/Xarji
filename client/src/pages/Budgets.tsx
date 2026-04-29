@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTheme, useViewport } from "../ink/theme";
 import { Card, CardLabel, CardTitle, Pill, PageHeader } from "../ink/primitives";
 import {
@@ -480,6 +480,7 @@ function BucketRow({
   const [editing, setEditing] = useState(false);
   const [targetDraft, setTargetDraft] = useState(String(row.target || ""));
   const [freqDraft, setFreqDraft] = useState(String(row.category.frequencyMonths || 12));
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
   const showsTarget = row.bucket === "fixed" || row.bucket === "non_monthly";
   // Bar measures actual / effectiveTarget so a positive rollover gives
@@ -505,6 +506,16 @@ function BucketRow({
       await onSetTarget({ targetAmount: target });
     }
     setEditing(false);
+  };
+
+  // For the Non-Monthly two-input editor, blur on the target input
+  // fires when the user clicks the months input, which would commit
+  // and unmount the months input before they can type. Skip the
+  // close when focus is moving to a sibling inside the editor; only
+  // commit on a real "exited the editor" blur. (Codex P2 on PR #42.)
+  const onFieldBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (editorRef.current?.contains(e.relatedTarget as Node | null)) return;
+    void commit();
   };
 
   return (
@@ -610,6 +621,7 @@ function BucketRow({
         {showsTarget && (
           editing ? (
             <div
+              ref={editorRef}
               style={{
                 display: "flex",
                 gap: 4,
@@ -623,7 +635,7 @@ function BucketRow({
                 value={targetDraft}
                 autoFocus
                 onChange={(e) => setTargetDraft(e.target.value.replace(/[^0-9.]/g, ""))}
-                onBlur={commit}
+                onBlur={onFieldBlur}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") commit();
                   if (e.key === "Escape") setEditing(false);
@@ -645,9 +657,10 @@ function BucketRow({
                 <input
                   value={freqDraft}
                   onChange={(e) => setFreqDraft(e.target.value.replace(/[^0-9]/g, ""))}
-                  onBlur={commit}
+                  onBlur={onFieldBlur}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") commit();
+                    if (e.key === "Escape") setEditing(false);
                   }}
                   placeholder="months"
                   style={{
