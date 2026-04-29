@@ -160,7 +160,11 @@ export function Income() {
             {monthly.count} incoming transactions · {format(now, "MMMM yyyy")}
           </div>
           {T.chartsVisible && credits9mTrend.some((d) => d.value > 0) && (
-            <div style={{ marginTop: 14 }}>
+            // Wrapper width matches the chart's so the bottom labels
+            // line up with the chart's data points (matches the same
+            // fix on Dashboard.tsx — without this, on wide screens the
+            // labels span Card width while the chart stays at 560px).
+            <div style={{ marginTop: 14, width: 560, maxWidth: "100%" }}>
               <AreaChart
                 data={credits9mTrend}
                 width={560}
