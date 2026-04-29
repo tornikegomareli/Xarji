@@ -145,7 +145,16 @@ function buildPayments(rng: () => number, now: Date): Payment[] {
     const weekday = date.getDay();
     const weekMul = weekday === 0 || weekday === 6 ? 1.3 : 1.0;
     const recencyMul = daysBack < 45 ? 1.0 : 0.85;
-    const count = Math.max(0, Math.round((2 + rng() * 5) * weekMul * recencyMul));
+    // Dampen current-month flex spending so /budgets shows flex
+    // remaining > 0 in demos (without this, the organic loop spends
+    // ~₾7-8k against a ~₾8.5k flex pool — close to zero remaining,
+    // which makes the headline number look broken even though it's
+    // accurate). Halving the current month leaves ~₾4k flex remaining,
+    // which is the right "you have headroom" story for screencasts.
+    const inCurrentMonth =
+      date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+    const monthMul = inCurrentMonth ? 0.5 : 1.0;
+    const count = Math.max(0, Math.round((2 + rng() * 5) * weekMul * recencyMul * monthMul));
 
     for (let i = 0; i < count; i++) {
       const m = pick(rng, MERCHANTS);
