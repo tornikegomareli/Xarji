@@ -27,6 +27,7 @@ export function Sidebar({
     { to: "/transactions", name: "Transactions", glyph: "≡", badge: txCount ? txCount.toLocaleString("en-US") : undefined },
     { to: "/income", name: "Income", glyph: "↓", badge: incomeCount ? incomeCount.toLocaleString("en-US") : undefined },
     { to: "/categories", name: "Categories", glyph: "◐" },
+    { to: "/budgets", name: "Budgets", glyph: "◇", pillBadge: "NEW" },
     { to: "/merchants", name: "Merchants", glyph: "◆" },
     { to: "/assistant", name: "Assistant", glyph: "✧", pillBadge: "NEW" },
     { to: "/signals", name: "Signals", glyph: "✦", badge: signalsCount ? String(signalsCount) : undefined },
