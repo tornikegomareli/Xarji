@@ -47,8 +47,9 @@ function planMonthMonth(key: string): number {
 function summarize(ctx: AIToolContext, planMonth: string) {
   // getAllCategories returns InkCategory which lacks bucket/target —
   // walk the raw categories list (DB rows have the full shape we
-  // need). The merged version is for pickers.
-  const dbCategories = ctx.categories;
+  // need). The merged version is for pickers. Live getter so a write
+  // earlier in the same agent loop is reflected in summary numbers.
+  const dbCategories = ctx.getCategories();
   const monthStart = new Date(planMonthYear(planMonth), planMonthMonth(planMonth), 1).getTime();
   const monthEnd = new Date(planMonthYear(planMonth), planMonthMonth(planMonth) + 1, 1).getTime();
   const plans = ctx.getPlans();
@@ -244,7 +245,11 @@ const setCategoryBucket: AITool = {
     const bucket = typeof input.bucket === "string" ? input.bucket : "";
     if (!categoryId) throw new Error("`categoryId` is required.");
     if (!isBucket(bucket)) throw new Error(`\`bucket\` must be one of: ${BUCKETS.join(", ")}.`);
-    const cat = ctx.categories.find((c) => c.id === categoryId);
+    // Live getter so chained writes (e.g. set_category_bucket then
+    // set_category_target in the same agent turn) see the bucket the
+    // sibling call just set. ctx.categories is captured at agent-run
+    // start and would be stale. (Codex P2 on PR #42 cumulative review.)
+    const cat = ctx.getCategories().find((c) => c.id === categoryId);
     if (!cat) throw new Error(`No category with id "${categoryId}". Use list_categories to find ids.`);
     await db.transact(db.tx.categories[categoryId].update({ bucket }));
     return { categoryId, name: cat.name, bucket, applied: true };
@@ -278,7 +283,11 @@ const setCategoryTarget: AITool = {
     if (!Number.isFinite(targetGEL) || targetGEL < 0) {
       throw new Error("`targetGEL` must be a non-negative number.");
     }
-    const cat = ctx.categories.find((c) => c.id === categoryId);
+    // Live getter so chained writes (e.g. set_category_bucket then
+    // set_category_target in the same agent turn) see the bucket the
+    // sibling call just set. ctx.categories is captured at agent-run
+    // start and would be stale. (Codex P2 on PR #42 cumulative review.)
+    const cat = ctx.getCategories().find((c) => c.id === categoryId);
     if (!cat) throw new Error(`No category with id "${categoryId}".`);
     if (cat.bucket === "flex") {
       throw new Error("Flex categories don't have per-category targets; the bucket pool is the limit. Use set_flex_pool to change the pool.");
@@ -312,7 +321,11 @@ const clearCategoryBudget: AITool = {
   executor: async (input, ctx) => {
     const categoryId = typeof input.categoryId === "string" ? input.categoryId : "";
     if (!categoryId) throw new Error("`categoryId` is required.");
-    const cat = ctx.categories.find((c) => c.id === categoryId);
+    // Live getter so chained writes (e.g. set_category_bucket then
+    // set_category_target in the same agent turn) see the bucket the
+    // sibling call just set. ctx.categories is captured at agent-run
+    // start and would be stale. (Codex P2 on PR #42 cumulative review.)
+    const cat = ctx.getCategories().find((c) => c.id === categoryId);
     if (!cat) throw new Error(`No category with id "${categoryId}".`);
     await db.transact(
       db.tx.categories[categoryId].update({
@@ -485,7 +498,11 @@ const setCategoryRollover: AITool = {
     const enabled = input.enabled;
     if (!categoryId) throw new Error("`categoryId` is required.");
     if (typeof enabled !== "boolean") throw new Error("`enabled` must be a boolean.");
-    const cat = ctx.categories.find((c) => c.id === categoryId);
+    // Live getter so chained writes (e.g. set_category_bucket then
+    // set_category_target in the same agent turn) see the bucket the
+    // sibling call just set. ctx.categories is captured at agent-run
+    // start and would be stale. (Codex P2 on PR #42 cumulative review.)
+    const cat = ctx.getCategories().find((c) => c.id === categoryId);
     if (!cat) throw new Error(`No category with id "${categoryId}".`);
     if (cat.bucket !== "fixed") {
       throw new Error("Rollover toggle only applies to Fixed categories. Non-Monthly always rolls; Flex never does.");

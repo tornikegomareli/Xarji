@@ -29,9 +29,13 @@ export interface AIToolContext {
   payments: ConvertedPayment[];
   credits: ConvertedCredit[];
   failedPayments: FailedPayment[];
-  /** Raw DB-backed category rows. Use sparingly — most tools should
-   *  prefer `getAllCategories()` which merges DEFAULT_CATEGORIES so
-   *  tools can target defaults that aren't yet persisted in DB. */
+  /** Snapshot of DB-backed category rows captured at agent-run start.
+   *  Sufficient for read-only flows that don't depend on writes earlier
+   *  in the same agentic loop. Tools that need to see fresh state across
+   *  chained writes (e.g. `set_category_target` reading the bucket
+   *  `set_category_bucket` just set) should use `getCategories()` below
+   *  instead. Most tools should prefer `getAllCategories()` for the
+   *  merged InkCategory list. */
   categories: Category[];
   bankSenders: BankSender[];
   /** Live merchant-override rows. Write tools (apply_category_override)
@@ -66,6 +70,12 @@ export interface AIToolContext {
    *  getAllCategories — use this from write tools that need to find
    *  an existing row's id. */
   getOverrides: Live<MerchantCategoryOverride[]>;
+  /** Returns live raw category rows (with bucket/target/etc fields).
+   *  Use this from chained budget write tools where the second call
+   *  needs to see the bucket / target the first call just set —
+   *  `ctx.categories` is captured at agent-run start and would be
+   *  stale across in-loop writes. (Codex P2 on PR #42.) */
+  getCategories: Live<Category[]>;
   /** Live budget-plan rows (one per "YYYY-MM" the user has saved
    *  changes for). Budget read tools use this to expose the current
    *  flex pool / expected income; write tools use it to find an

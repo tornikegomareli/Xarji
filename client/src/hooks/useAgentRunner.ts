@@ -156,6 +156,10 @@ export function useAgentRunner() {
   // when set_expected_income is followed by set_flex_pool in one turn.
   const liveRef = useRef({ allCategories, overrides, categories, plans });
   liveRef.current = { allCategories, overrides, categories, plans };
+  // categories is also exposed via getCategories for chained budget
+  // writes — see types.ts JSDoc on AIToolContext.getCategories. The
+  // ref already tracks `categories`; getCategories just reads it
+  // through the same getter pattern as getAllCategories etc.
 
   return useCallback(
     async (
@@ -187,6 +191,7 @@ export function useAgentRunner() {
           // use the getters for everything they touch.
           getAllCategories: () => liveRef.current.allCategories,
           getOverrides: () => liveRef.current.overrides,
+          getCategories: () => liveRef.current.categories,
           getPlans: () => liveRef.current.plans,
         },
         emit,
