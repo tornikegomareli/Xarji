@@ -145,20 +145,26 @@ function buildPayments(rng: () => number, now: Date): Payment[] {
     const weekday = date.getDay();
     const weekMul = weekday === 0 || weekday === 6 ? 1.3 : 1.0;
     const recencyMul = daysBack < 45 ? 1.0 : 0.85;
-    // Dampen current-month flex spending so /budgets shows flex
-    // remaining > 0 in demos (without this, the organic loop spends
-    // ~₾7-8k against a ~₾8.5k flex pool — close to zero remaining,
-    // which makes the headline number look broken even though it's
-    // accurate). Halving the current month leaves ~₾4k flex remaining,
-    // which is the right "you have headroom" story for screencasts.
+    // Dampen current-month flex spending so /budgets and the
+    // Dashboard show positive net cashflow + meaningful flex
+    // remaining in demos. Two levers, both ×0.5 → 0.25× total spend
+    // reduction. Halving the count alone wasn't enough because
+    // big-ticket merchants (Elit Electronics, Booking, Wizz Air)
+    // pull the per-transaction average up; halving the per-tx
+    // amount as well clips outlier impact without removing those
+    // merchants from the demo entirely. Past months keep full
+    // volume so the trend chart + rollover math (Phase 2) still
+    // have realistic actuals to walk over.
     const inCurrentMonth =
       date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
-    const monthMul = inCurrentMonth ? 0.5 : 1.0;
-    const count = Math.max(0, Math.round((2 + rng() * 5) * weekMul * recencyMul * monthMul));
+    const countMul = inCurrentMonth ? 0.5 : 1.0;
+    const amountMul = inCurrentMonth ? 0.5 : 1.0;
+    const count = Math.max(0, Math.round((2 + rng() * 5) * weekMul * recencyMul * countMul));
 
     for (let i = 0; i < count; i++) {
       const m = pick(rng, MERCHANTS);
-      const baseAmount = round2(m.range[0] + rng() * (m.range[1] - m.range[0]));
+      const rawBaseAmount = round2(m.range[0] + rng() * (m.range[1] - m.range[0]));
+      const baseAmount = round2(rawBaseAmount * amountMul);
       const hour = 8 + Math.floor(rng() * 14);
       const minute = Math.floor(rng() * 60);
       date.setHours(hour, minute, Math.floor(rng() * 60));
