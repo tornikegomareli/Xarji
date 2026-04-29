@@ -236,6 +236,7 @@ export function CategoryPicker({
               if (error) setError(null);
             }}
             onKeyDown={(e) => {
+              e.stopPropagation();
               if (e.key === "Enter") {
                 e.preventDefault();
                 submitNew();
@@ -337,7 +338,7 @@ export function CategoryPicker({
               <ScopeBtn T={T} label={`All ${merchant.slice(0, 10)}${merchant.length > 10 ? "…" : ""} transactions`} active={scope === "merchant"} onClick={() => setScope("merchant")} />
             </div>
           )}
-          <div style={{ display: "flex", flexDirection: "column", flex: 1, overflowY: "auto", minHeight: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", flex: 1, overflowY: "auto", minHeight: 0, overscrollBehavior: "contain" }}>
             {allCategories.map((cat) => (
               <CategoryRow
                 key={cat.id}
