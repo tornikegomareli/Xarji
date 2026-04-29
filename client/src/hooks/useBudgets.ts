@@ -183,8 +183,16 @@ export function useBudgetSummary(planMonth = planMonthKey()) {
  * `db.transact` call, keeping the InstantDB write surface in one
  * place (matches the useTransactionExclude / useCategoryActions
  * pattern elsewhere in the app).
+ *
+ * Subscribes to the budgetPlans list so upsertPlan can decide
+ * insert-vs-update against React state rather than calling
+ * `db.queryOnce` — the demo DB at `client/src/dev/demoDb.ts` doesn't
+ * implement queryOnce, so going through the live subscription makes
+ * the same code path work in real and demo modes. (Codex P2 on PR
+ * #42.)
  */
 export function useBudgetMutations() {
+  const { plans } = useBudgetPlans();
   const setCategoryBucket = useCallback(async (categoryId: string, bucket: Bucket | null) => {
     if (bucket === null) {
       // Unclassify: clear bucket + target + frequency + rollover so
@@ -215,7 +223,6 @@ export function useBudgetMutations() {
   const upsertPlan = useCallback(
     async (planMonth: string, updates: Partial<Omit<BudgetPlan, "id" | "planMonth" | "createdAt">>) => {
       const now = Date.now();
-      const { plans } = await readPlans();
       const existing = plans.find((p) => p.planMonth === planMonth);
       if (existing) {
         await db.transact(
@@ -240,7 +247,7 @@ export function useBudgetMutations() {
         );
       }
     },
-    []
+    [plans]
   );
 
   const setExpectedIncome = useCallback(
@@ -331,15 +338,4 @@ function planMonthYear(key: string): number {
 
 function planMonthMonth(key: string): number {
   return Number(key.slice(5, 7)) - 1;
-}
-
-// One-shot read for upsert decisions. We can't useQuery in a callback,
-// so this wraps the fact that the plans list is already cached by
-// useBudgetPlans elsewhere on the page — calling .queryOnce() here
-// handles the rare case where the mutation runs before useBudgetPlans
-// has subscribed.
-async function readPlans(): Promise<{ plans: BudgetPlan[] }> {
-  const result = await db.queryOnce({ budgetPlans: {} });
-  const plans = ((result.data?.budgetPlans ?? []) as BudgetPlan[]) ?? [];
-  return { plans };
 }
