@@ -10,9 +10,12 @@ import { useConvertedCredits } from "./useCredits";
 import { useConvertedPayments } from "./useTransactions";
 import { useCategorizer } from "./useCategorizer";
 import {
+  anchorMonthFromPlans,
   bucketMonthlyCommitment,
   computeFlexPool,
+  computeRollover,
   median,
+  monthKeyFromTimestamp,
   monthlyAccrual,
   planMonthKey,
   type Bucket,
@@ -113,26 +116,50 @@ export function useBudgetPlan(planMonth = planMonthKey()) {
 
 /**
  * Per-bucket aggregate the page renders. For each category, returns
- * the target + monthly commitment + actual spent this month +
- * remaining. Honors `excludedFromAnalytics`. Phase 2 wires rollover
- * carry on top of this shape.
+ * target + monthly commitment + actual + rolloverIn (Phase 2) +
+ * remaining. Honors `excludedFromAnalytics`.
+ *
+ * Rollover semantics (Phase 2):
+ *   - Fixed with `rolloverEnabled: true`: leftover/overshoot from
+ *     prior months carries to current month's effective target.
+ *   - Non-Monthly: always rolls forward (sinking-fund balance) —
+ *     accrual_m − actual_m summed across months from the anchor.
+ *   - Flex: never rolls (matches Monarch's help docs).
+ *
+ * The anchor is the earliest planMonth in the user's saved plans.
+ * Months before the anchor are treated as 0-contribution; the user
+ * hadn't started budgeting yet, so we don't retro-credit nor debit.
  */
 export function useBudgetSummary(planMonth = planMonthKey()) {
   const { categories } = useCategories();
   const { payments } = useConvertedPayments();
   const { categorize } = useCategorizer();
+  const { plans } = useBudgetPlans();
 
   return useMemo(() => {
     const monthStart = new Date(planMonthYear(planMonth), planMonthMonth(planMonth), 1).getTime();
     const monthEnd = new Date(planMonthYear(planMonth), planMonthMonth(planMonth) + 1, 1).getTime();
+    const anchor = anchorMonthFromPlans(plans);
 
+    // Bucket-by-categoryId for current month spend AND build the
+    // (categoryId × monthKey) → spend lookup we hand to
+    // computeRollover. Walking payments once for both is an O(n)
+    // pass; Phase 1 walked twice in different callers.
     const spentByCategoryId = new Map<string, number>();
+    const monthlyActualsByCategory = new Map<string, number>();
     for (const p of payments) {
       if (p.gelAmount === null) continue;
       if (p.excludedFromAnalytics) continue;
-      if (p.transactionDate < monthStart || p.transactionDate >= monthEnd) continue;
       const catId = categorize(p.merchant ?? null, p.rawMessage ?? null, p.id);
-      spentByCategoryId.set(catId, (spentByCategoryId.get(catId) ?? 0) + p.gelAmount);
+      const mKey = monthKeyFromTimestamp(p.transactionDate);
+      const compoundKey = `${catId}::${mKey}`;
+      monthlyActualsByCategory.set(
+        compoundKey,
+        (monthlyActualsByCategory.get(compoundKey) ?? 0) + p.gelAmount
+      );
+      if (p.transactionDate >= monthStart && p.transactionDate < monthEnd) {
+        spentByCategoryId.set(catId, (spentByCategoryId.get(catId) ?? 0) + p.gelAmount);
+      }
     }
 
     type Row = {
@@ -141,6 +168,8 @@ export function useBudgetSummary(planMonth = planMonthKey()) {
       target: number;
       monthlyCommitment: number;
       actual: number;
+      rolloverIn: number;
+      effectiveTarget: number;
       remaining: number;
     };
 
@@ -149,8 +178,18 @@ export function useBudgetSummary(planMonth = planMonthKey()) {
       const target = c.targetAmount ?? 0;
       const monthlyCommitment = bucketMonthlyCommitment(c);
       const actual = spentByCategoryId.get(c.id) ?? 0;
-      const remaining = bucket === "fixed" ? target - actual : monthlyCommitment - actual;
-      return { category: c, bucket, target, monthlyCommitment, actual, remaining };
+      const rolloverIn = anchor
+        ? computeRollover({
+            category: c,
+            categoryId: c.id,
+            anchorMonth: anchor,
+            currentMonth: planMonth,
+            monthlyActualsByCategory,
+          })
+        : 0;
+      const effectiveTarget = (bucket === "fixed" ? target : monthlyCommitment) + rolloverIn;
+      const remaining = effectiveTarget - actual;
+      return { category: c, bucket, target, monthlyCommitment, actual, rolloverIn, effectiveTarget, remaining };
     });
 
     const byBucket = {
@@ -165,6 +204,10 @@ export function useBudgetSummary(planMonth = planMonthKey()) {
     const flexActual = byBucket.flex.reduce((s, r) => s + r.actual, 0);
     const nonMonthlyActual = byBucket.non_monthly.reduce((s, r) => s + r.actual, 0);
     const nonMonthlyAccruals = byBucket.non_monthly.reduce((s, r) => s + r.monthlyCommitment, 0);
+    // Sinking-fund balance across all Non-Monthly categories — the
+    // total accrued-but-unspent pool. Useful as a header-level
+    // signal even though each row also displays its own carry.
+    const nonMonthlySinkingFund = byBucket.non_monthly.reduce((s, r) => s + r.rolloverIn, 0);
 
     return {
       rows,
@@ -174,8 +217,10 @@ export function useBudgetSummary(planMonth = planMonthKey()) {
       flexActual,
       nonMonthlyActual,
       nonMonthlyAccruals,
+      nonMonthlySinkingFund,
+      anchor,
     };
-  }, [categories, payments, categorize, planMonth]);
+  }, [categories, payments, categorize, plans, planMonth]);
 }
 
 /**
@@ -216,6 +261,13 @@ export function useBudgetMutations() {
       args: { targetAmount?: number; frequencyMonths?: number; rolloverEnabled?: boolean }
     ) => {
       await db.transact(db.tx.categories[categoryId].update(args));
+    },
+    []
+  );
+
+  const setCategoryRollover = useCallback(
+    async (categoryId: string, enabled: boolean) => {
+      await db.transact(db.tx.categories[categoryId].update({ rolloverEnabled: enabled }));
     },
     []
   );
@@ -285,6 +337,7 @@ export function useBudgetMutations() {
   return {
     setCategoryBucket,
     setCategoryTarget,
+    setCategoryRollover,
     setExpectedIncome,
     setFlexPool,
     setSavingsTarget,

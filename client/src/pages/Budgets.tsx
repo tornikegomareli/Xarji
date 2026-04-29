@@ -17,8 +17,14 @@ export function Budgets() {
   const planMonth = planMonthKey();
   const plan = useBudgetPlan(planMonth);
   const summary = useBudgetSummary(planMonth);
-  const { setCategoryBucket, setCategoryTarget, setExpectedIncome, setFlexPool, setSavingsTarget } =
-    useBudgetMutations();
+  const {
+    setCategoryBucket,
+    setCategoryTarget,
+    setCategoryRollover,
+    setExpectedIncome,
+    setFlexPool,
+    setSavingsTarget,
+  } = useBudgetMutations();
 
   const flexUsedPct = plan.flexPool > 0 ? Math.min(100, (summary.flexActual / plan.flexPool) * 100) : 0;
   const flexRemaining = Math.max(0, plan.flexPool - summary.flexActual);
@@ -114,8 +120,10 @@ export function Budgets() {
               key={bucket}
               bucket={bucket}
               rows={summary.byBucket[bucket]}
+              sinkingFund={bucket === "non_monthly" ? summary.nonMonthlySinkingFund : 0}
               onSetTarget={setCategoryTarget}
               onSetBucket={setCategoryBucket}
+              onSetRollover={setCategoryRollover}
             />
           ))}
 
@@ -402,16 +410,20 @@ function NumberField({
 function BucketSection({
   bucket,
   rows,
+  sinkingFund,
   onSetTarget,
   onSetBucket,
+  onSetRollover,
 }: {
   bucket: Bucket;
-  rows: Array<{ category: Category; bucket: Bucket | null; target: number; monthlyCommitment: number; actual: number; remaining: number }>;
+  rows: Array<{ category: Category; bucket: Bucket | null; target: number; monthlyCommitment: number; actual: number; rolloverIn: number; effectiveTarget: number; remaining: number }>;
+  sinkingFund: number;
   onSetTarget: (
     catId: string,
     args: { targetAmount?: number; frequencyMonths?: number; rolloverEnabled?: boolean }
   ) => Promise<void>;
   onSetBucket: (catId: string, b: Bucket | null) => Promise<void>;
+  onSetRollover: (catId: string, enabled: boolean) => Promise<void>;
 }) {
   const T = useTheme();
   if (rows.length === 0) return null;
@@ -419,7 +431,21 @@ function BucketSection({
   return (
     <Card pad="22px 24px" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div>
-        <CardTitle>{BUCKET_LABELS[bucket]}</CardTitle>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+          <CardTitle>{BUCKET_LABELS[bucket]}</CardTitle>
+          {bucket === "non_monthly" && sinkingFund !== 0 && (
+            <span
+              style={{
+                fontSize: 11,
+                color: sinkingFund >= 0 ? T.green : T.accent,
+                fontFamily: T.mono,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {sinkingFund >= 0 ? "+" : "−"}₾{Math.abs(Math.round(sinkingFund)).toLocaleString("en-US")} sinking fund
+            </span>
+          )}
+        </div>
         <div style={{ fontSize: 12, color: T.muted, fontFamily: T.sans, marginTop: 4, lineHeight: 1.5 }}>
           {BUCKET_DESCRIPTIONS[bucket]}
         </div>
@@ -431,6 +457,7 @@ function BucketSection({
             row={r}
             onSetTarget={(args) => onSetTarget(r.category.id, args)}
             onMoveToBucket={(b) => onSetBucket(r.category.id, b)}
+            onSetRollover={(enabled) => onSetRollover(r.category.id, enabled)}
           />
         ))}
       </div>
@@ -442,10 +469,12 @@ function BucketRow({
   row,
   onSetTarget,
   onMoveToBucket,
+  onSetRollover,
 }: {
-  row: { category: Category; bucket: Bucket | null; target: number; monthlyCommitment: number; actual: number; remaining: number };
+  row: { category: Category; bucket: Bucket | null; target: number; monthlyCommitment: number; actual: number; rolloverIn: number; effectiveTarget: number; remaining: number };
   onSetTarget: (args: { targetAmount?: number; frequencyMonths?: number }) => Promise<void>;
   onMoveToBucket: (b: Bucket | null) => Promise<void>;
+  onSetRollover: (enabled: boolean) => Promise<void>;
 }) {
   const T = useTheme();
   const [editing, setEditing] = useState(false);
@@ -453,8 +482,14 @@ function BucketRow({
   const [freqDraft, setFreqDraft] = useState(String(row.category.frequencyMonths || 12));
 
   const showsTarget = row.bucket === "fixed" || row.bucket === "non_monthly";
-  const pct = row.monthlyCommitment > 0 ? Math.min(100, (row.actual / row.monthlyCommitment) * 100) : 0;
-  const overspent = showsTarget && row.actual > row.monthlyCommitment;
+  // Bar measures actual / effectiveTarget so a positive rollover gives
+  // headroom and a negative one shrinks the bar — visually consistent
+  // with the displayed "of ₾X" denominator below.
+  const denom = row.effectiveTarget > 0 ? row.effectiveTarget : row.monthlyCommitment;
+  const pct = denom > 0 ? Math.min(100, (row.actual / denom) * 100) : 0;
+  const overspent = showsTarget && row.actual > Math.max(0, row.effectiveTarget);
+  const rolloverEnabled = row.bucket === "fixed" && row.category.rolloverEnabled === true;
+  const showRolloverHint = showsTarget && row.rolloverIn !== 0;
 
   const commit = async () => {
     const target = Number(targetDraft);
@@ -526,7 +561,7 @@ function BucketRow({
           alignItems: "flex-end",
           fontFamily: T.mono,
           fontVariantNumeric: "tabular-nums",
-          minWidth: 100,
+          minWidth: 110,
         }}
       >
         <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>
@@ -534,12 +569,44 @@ function BucketRow({
         </span>
         {showsTarget && (
           <span style={{ fontSize: 10, color: T.dim }}>
-            of ₾{Math.round(row.monthlyCommitment).toLocaleString("en-US")}
+            of ₾{Math.round(Math.max(0, row.effectiveTarget)).toLocaleString("en-US")}
+          </span>
+        )}
+        {showRolloverHint && (
+          <span
+            style={{
+              fontSize: 10,
+              color: row.rolloverIn >= 0 ? T.green : T.accent,
+            }}
+          >
+            {row.rolloverIn >= 0 ? "+" : "−"}₾{Math.abs(Math.round(row.rolloverIn)).toLocaleString("en-US")} carried
           </span>
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 6 }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        {row.bucket === "fixed" && (
+          <button
+            type="button"
+            onClick={() => onSetRollover(!rolloverEnabled)}
+            title={rolloverEnabled ? "Rollover ON — leftover/overshoot carries to next month" : "Rollover OFF — each month starts fresh"}
+            style={{
+              padding: "5px 8px",
+              background: rolloverEnabled ? T.accentSoft : "transparent",
+              border: `1px solid ${rolloverEnabled ? T.accent : T.line}`,
+              borderRadius: 6,
+              color: rolloverEnabled ? T.accent : T.muted,
+              fontSize: 10.5,
+              fontFamily: T.mono,
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {rolloverEnabled ? "↻ on" : "↻ off"}
+          </button>
+        )}
         {showsTarget && (
           editing ? (
             <div

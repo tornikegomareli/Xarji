@@ -144,10 +144,100 @@ export function planMonthKey(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/** Convert a `transactionDate` timestamp to its month key. */
+export function monthKeyFromTimestamp(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * List the month keys from `start` (inclusive) to `end` (exclusive)
+ * in chronological order. Both bounds are "YYYY-MM" strings. Returns
+ * empty when `end` is at or before `start`.
+ */
+export function monthRange(start: string, end: string): string[] {
+  const out: string[] = [];
+  let [y, m] = start.split("-").map(Number);
+  const [endY, endM] = end.split("-").map(Number);
+  while (y < endY || (y === endY && m < endM)) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return out;
+}
+
 /** Median of a non-empty array; mean used as a tie-breaker. */
 export function median(values: number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+/**
+ * Walk months from `anchorMonth` (inclusive) to the month before
+ * `currentMonth` accumulating `(target − actual)` for Fixed (only
+ * when `rolloverEnabled`) or `(accrual − actual)` for Non-Monthly.
+ *
+ * Negatives carry — overshoot in March means April's effective
+ * target drops by the overshoot. That's the same semantics Monarch
+ * uses; users who don't want the carry should leave
+ * `rolloverEnabled: false` on Fixed rows.
+ *
+ * Pure: takes a precomputed `monthlyActualsByCategory` lookup so a
+ * page rendering 30 categories doesn't iterate the payments list 30
+ * times. The lookup key shape is `${categoryId}::${monthKey}`.
+ *
+ * Returns 0 (no carry) when:
+ *   - the category has no bucket
+ *   - the bucket is Flex (flex pool doesn't roll forward)
+ *   - the bucket is Fixed and rolloverEnabled is false/missing
+ *   - currentMonth ≤ anchorMonth (no prior months to walk)
+ *   - the category has no target/frequency to compare against
+ */
+export function computeRollover(args: {
+  category: Pick<Category, "bucket" | "targetAmount" | "frequencyMonths" | "rolloverEnabled">;
+  categoryId: string;
+  anchorMonth: string;
+  currentMonth: string;
+  monthlyActualsByCategory: Map<string, number>;
+}): number {
+  const { category, categoryId, anchorMonth, currentMonth, monthlyActualsByCategory } = args;
+  if (!category.bucket || category.bucket === "flex") return 0;
+  if (category.bucket === "fixed" && !category.rolloverEnabled) return 0;
+
+  const months = monthRange(anchorMonth, currentMonth);
+  if (months.length === 0) return 0;
+
+  const targetForMonth =
+    category.bucket === "fixed"
+      ? category.targetAmount ?? 0
+      : monthlyAccrual(category);
+  if (targetForMonth === 0) return 0;
+
+  let carry = 0;
+  for (const month of months) {
+    const actual = monthlyActualsByCategory.get(`${categoryId}::${month}`) ?? 0;
+    carry += targetForMonth - actual;
+  }
+  return carry;
+}
+
+/**
+ * Earliest plan month from a list of stored plans. Used as the
+ * rollover anchor — months before the user opened /budgets are
+ * treated as having zero contribution (empty sum). Returns null
+ * when the user hasn't saved any plan yet, in which case rollover
+ * is 0 across the board (and the page still renders sensible
+ * Phase-1-style numbers).
+ */
+export function anchorMonthFromPlans(plans: Array<{ planMonth: string }>): string | null {
+  if (plans.length === 0) return null;
+  return plans
+    .map((p) => p.planMonth)
+    .sort((a, b) => a.localeCompare(b))[0];
 }
