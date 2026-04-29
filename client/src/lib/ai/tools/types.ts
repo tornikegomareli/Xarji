@@ -7,7 +7,13 @@ import type { AIToolDefinition } from "../types";
 import type { AIBlock } from "../../aiThreads";
 import type { ConvertedPayment } from "../../../hooks/useTransactions";
 import type { ConvertedCredit } from "../../../hooks/useCredits";
-import type { FailedPayment, Category, BankSender, MerchantCategoryOverride } from "../../instant";
+import type {
+  FailedPayment,
+  Category,
+  BankSender,
+  MerchantCategoryOverride,
+  BudgetPlan,
+} from "../../instant";
 import type { InkCategory } from "../../utils";
 
 /** A snapshot getter that returns the freshest value available at the
@@ -52,6 +58,12 @@ export interface AIToolContext {
    *  getAllCategories — use this from write tools that need to find
    *  an existing row's id. */
   getOverrides: Live<MerchantCategoryOverride[]>;
+  /** Live budget-plan rows (one per "YYYY-MM" the user has saved
+   *  changes for). Budget read tools use this to expose the current
+   *  flex pool / expected income; write tools use it to find an
+   *  existing row's id for upsert decisions instead of calling
+   *  db.queryOnce (which the demo DB doesn't implement). */
+  getPlans: Live<BudgetPlan[]>;
 }
 
 export interface AITool {

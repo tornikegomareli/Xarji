@@ -7,7 +7,7 @@
 // from `./demoDb`, which itself is only reached behind a static
 // `import.meta.env.DEV && isDemoMode()` gate in `lib/instant.ts`.
 
-import type { Payment, FailedPayment, Credit, Category, BankSender } from "../lib/instant";
+import type { Payment, FailedPayment, Credit, Category, BankSender, BudgetPlan } from "../lib/instant";
 import { DEFAULT_CATEGORIES } from "../lib/utils";
 
 function mulberry32(seed: number) {
@@ -33,13 +33,42 @@ const SENDERS: BankSender[] = [
   { id: "bs-bog", senderId: "BOG", displayName: "Main", enabled: true, createdAt: Date.now() - 9 * 30 * 86400000 },
 ];
 
-const CATEGORIES: Category[] = DEFAULT_CATEGORIES.map((c) => ({
-  id: `cat-${c.id}`,
-  name: c.name,
-  color: c.color,
-  icon: c.icon,
-  isDefault: true,
-}));
+// Bucket assignments for the demo dataset. Hand-picked so the
+// /budgets page renders a non-trivial example out of the box: a few
+// Fixed (predictable subscriptions/utilities), the rest Flex
+// (discretionary), one Non-Monthly (Travel — accrues to a sinking
+// fund). Targets reflect realistic GEL amounts that sum into a
+// flex-pool the demo income (~₾4800) actually supports.
+const DEMO_BUCKET_ASSIGNMENTS: Record<
+  string,
+  { bucket: "fixed" | "flex" | "non_monthly"; targetAmount?: number; frequencyMonths?: number; rolloverEnabled?: boolean }
+> = {
+  groceries: { bucket: "flex" },
+  dining: { bucket: "flex" },
+  food: { bucket: "flex" },
+  transport: { bucket: "flex" },
+  subs: { bucket: "fixed", targetAmount: 200, rolloverEnabled: true },
+  shopping: { bucket: "flex" },
+  travel: { bucket: "non_monthly", targetAmount: 2400, frequencyMonths: 12 },
+  utilities: { bucket: "fixed", targetAmount: 220, rolloverEnabled: false },
+  health: { bucket: "flex" },
+  fun: { bucket: "flex" },
+  loans: { bucket: "fixed", targetAmount: 800, rolloverEnabled: false },
+  cash: { bucket: "flex" },
+  other: { bucket: "flex" },
+};
+
+const CATEGORIES: Category[] = DEFAULT_CATEGORIES.map((c) => {
+  const bucketSpec = DEMO_BUCKET_ASSIGNMENTS[c.id];
+  return {
+    id: `cat-${c.id}`,
+    name: c.name,
+    color: c.color,
+    icon: c.icon,
+    isDefault: true,
+    ...(bucketSpec ?? {}),
+  };
+});
 
 // Merchants chosen to match every regex bucket in lib/utils.ts so the
 // donut populates all 11 default categories. Amount ranges in GEL.
@@ -400,6 +429,43 @@ export interface DemoDataset {
   credits: Credit[];
   categories: Category[];
   bankSenders: BankSender[];
+  budgetPlans: BudgetPlan[];
+}
+
+// Two months of budgetPlans seeded for the demo: the current month
+// (auto-everything) plus the previous month (also auto). Two rows
+// gives the rollover anchor a real value, so demo viewers see
+// non-zero "carried" indicators on Fixed-with-rollover + Non-Monthly
+// rows after at least one historical month exists.
+function buildBudgetPlans(now: Date): BudgetPlan[] {
+  const cur = new Date(now.getFullYear(), now.getMonth(), 1);
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const ts = (d: Date) => d.getTime();
+  return [
+    {
+      id: `plan-${fmt(prev)}`,
+      planMonth: fmt(prev),
+      expectedIncome: 0,
+      expectedIncomeAuto: true,
+      flexPool: 0,
+      flexPoolAuto: true,
+      savingsTarget: 500,
+      createdAt: ts(prev),
+      updatedAt: ts(prev),
+    },
+    {
+      id: `plan-${fmt(cur)}`,
+      planMonth: fmt(cur),
+      expectedIncome: 0,
+      expectedIncomeAuto: true,
+      flexPool: 0,
+      flexPoolAuto: true,
+      savingsTarget: 500,
+      createdAt: ts(cur),
+      updatedAt: ts(cur),
+    },
+  ];
 }
 
 export function buildDemoDataset(seed: "default" | "empty"): DemoDataset {
@@ -410,6 +476,7 @@ export function buildDemoDataset(seed: "default" | "empty"): DemoDataset {
       credits: [],
       categories: [],
       bankSenders: [],
+      budgetPlans: [],
     };
   }
   const rng = mulberry32(20260424);
@@ -420,5 +487,6 @@ export function buildDemoDataset(seed: "default" | "empty"): DemoDataset {
     credits: buildCredits(rng, now),
     categories: CATEGORIES,
     bankSenders: SENDERS,
+    budgetPlans: buildBudgetPlans(now),
   };
 }

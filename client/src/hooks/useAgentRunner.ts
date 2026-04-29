@@ -12,17 +12,19 @@ import { getProviderClient } from "../lib/ai/provider";
 import { runAgent, type AssistantEvent } from "../lib/ai/orchestrator";
 import { READONLY_TOOLS } from "../lib/ai/tools/readonly";
 import { WRITE_TOOLS } from "../lib/ai/tools/write";
+import { BUDGET_TOOLS } from "../lib/ai/tools/budgets";
 import type { AITool } from "../lib/ai/tools/types";
 import type { AICoreMessage } from "../lib/ai/types";
 import type { AIConfig } from "../lib/aiConfig";
 import { useMerchantOverrides } from "./useMerchantOverrides";
+import { useBudgetPlans } from "./useBudgets";
 
 // Tool registries the agent has access to. Adding a tool to one of
 // these lists automatically (a) makes it callable by the model and
 // (b) appends it to the "Available tools" section of the system
 // prompt — see buildSystemPrompt() below. Adding a NEW registry?
 // Concatenate it into ALL_TOOLS so both effects happen.
-const ALL_TOOLS: AITool[] = [...READONLY_TOOLS, ...WRITE_TOOLS];
+const ALL_TOOLS: AITool[] = [...READONLY_TOOLS, ...WRITE_TOOLS, ...BUDGET_TOOLS];
 
 const BASE_SYSTEM_PROMPT = `You are Xarji's AI Assistant, a personal finance assistant embedded inside the Xarji dashboard.
 
@@ -60,6 +62,15 @@ Write tools:
 - \`exclude_transaction\` hides a transaction from analytics totals, donut, trends, and signals — the row stays visible in the /transactions or /income ledger with an "Excluded" pill. Fully reversible via \`include_transaction\` on the same id. Use when the user says things like "don't count that ₾4280 IKEA purchase, it was for someone else", "exclude this from my spending", or "ignore that one in the math".
 - Both exclusion tools accept \`kind\` ("payment" or "credit") so the model can hide either an outgoing payment or an incoming credit. Default is "payment".
 - To find the row id and current state, call \`search_transactions\` first — it returns each row's \`id\`, \`kind\`, and \`excludedFromAnalytics\`, which is exactly what \`exclude_transaction\` / \`include_transaction\` need. Use the \`kind\` filter on \`search_transactions\` to narrow to payments or credits when the user's wording makes that clear.
+
+Flex budgeting:
+- Xarji has a Monarch-style three-bucket budgeting model on the \`/budgets\` page. Categories carry a \`bucket\` ("fixed", "flex", or "non_monthly") plus a target. The headline number is **flex remaining** — what the user has left to spend on discretionary stuff this month.
+- Use \`get_budget_summary\` for plan-aware questions ("how much flex do I have left", "am I on track this month", "what's my budget for X").
+- Use \`list_budgets_by_bucket\` for "show me all my budgets", "which categories are over budget".
+- Write tools auto-apply: \`set_category_bucket\`, \`set_category_target\`, \`set_category_rollover\`, \`set_expected_income\`, \`set_flex_pool\`, \`set_savings_target\`, \`clear_category_budget\`.
+- The flex-pool formula is: expectedIncome − sum(fixed targets) − sum(non-monthly accruals) − savingsTarget. If the user wants to manually override the flex pool, use \`set_flex_pool\`. If they want auto-derive back, call \`set_flex_pool\` with \`amountGEL: null\`.
+- For Non-Monthly categories, both \`targetGEL\` and \`frequencyMonths\` are required (e.g. ₾2400 across 12 months = ₾200/mo accrual). Fixed categories only need \`targetGEL\`. Flex categories don't take per-category targets — the bucket pool is the limit.
+- Rollover semantics: Fixed categories opt in via \`set_category_rollover\`. Non-Monthly always rolls (sinking-fund balance). Flex never rolls. Rollover only kicks in once the user has saved a plan; before that, current month starts at zero carry.
 
 UI-only actions you can describe but not execute:
 - **Delete a category**: not a tool. Tell the user to open \`/categories\` and click the × button on the category row — the existing confirm dialog there is the right place for a destructive action. After confirming, that same code path also cleans up any merchant overrides pointing at the deleted category.
@@ -133,6 +144,7 @@ export function useAgentRunner() {
   const { senders } = useBankSenders();
   const { categorizeName, allCategories } = useCategorizer();
   const { overrides } = useMerchantOverrides();
+  const { plans } = useBudgetPlans();
 
   // Ref-based snapshot of live state. Updated on every render so that
   // tools called LATER in a single agentic loop see fresh data after
@@ -140,9 +152,10 @@ export function useAgentRunner() {
   // assistant turn that does `create_category` then `apply_category_
   // override` validates the second call against the snapshot taken
   // BEFORE the first call ran, rejecting the just-created id. Codex
-  // HIGH on PR #32.
-  const liveRef = useRef({ allCategories, overrides, categories });
-  liveRef.current = { allCategories, overrides, categories };
+  // HIGH on PR #32. The same staleness story applies to budget plans
+  // when set_expected_income is followed by set_flex_pool in one turn.
+  const liveRef = useRef({ allCategories, overrides, categories, plans });
+  liveRef.current = { allCategories, overrides, categories, plans };
 
   return useCallback(
     async (
@@ -173,6 +186,7 @@ export function useAgentRunner() {
           // use the getters for everything they touch.
           getAllCategories: () => liveRef.current.allCategories,
           getOverrides: () => liveRef.current.overrides,
+          getPlans: () => liveRef.current.plans,
         },
         emit,
         signal,
