@@ -140,6 +140,7 @@ if [[ ! -x "$SWIFT_BIN" ]]; then
 fi
 cp "$SWIFT_BIN" "$APP/Contents/MacOS/XarjiMenuBar"
 chmod +x "$APP/Contents/MacOS/XarjiMenuBar"
+install_name_tool -add_rpath "@loader_path/../Frameworks" "$APP/Contents/MacOS/XarjiMenuBar"
 
 # Drop the compiled Bun service alongside. The menu-bar app Process-
 # spawns this on launch; see CoreProcess.swift resolveCoreBinary().
