@@ -8,7 +8,7 @@ Open `http://localhost:5173/income`. Default range: **Month**.
 
 ## Demo-data baseline (current month)
 
-- Hero `+₾<total>` ≥ ₾10,000 (Tech Co LLC ₾4,800 × 2 = ₾9,600 alone).
+- Hero `+₾<total>` ≥ ₾15,000 (Tech Co LLC ₾7,500 × 2 = ₾15,000 alone).
 - ≥6 incoming transactions: 2 salaries + freelance (1) + Wolt refund + Carrefour refund + Mom + (Stripe Payout USD, filtered out by GEL filter).
 - Counterparties present: `Tech Co LLC`, one of `Design Studio|Acme GmbH|Northwind|Studio Twelve|Civic Lab` (rotates by month), `Wolt refund`, `Carrefour refund`, `Mom`, `Stripe Payout` (USD, may not appear in GEL view).
 

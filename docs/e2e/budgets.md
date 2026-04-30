@@ -19,10 +19,10 @@ auto-everything). Specifically:
   Entertainment, Cash, Other (no per-category targets).
 - **Plans seeded**: previous month + current month, savingsTarget = ₾500
   on both, expectedIncome and flexPool both auto-derived.
-- **Current-month spending**: dampened to ~50% count × 50% amount so net
-  cashflow is positive and `flex remaining` shows real headroom (≥₾3k
-  typical). Past months keep full volume so the rollover anchor has real
-  prior actuals to walk over.
+- **Income sized for headroom**: Tech Co LLC salary is ₾7500 × 2/mo so
+  flex remaining stays comfortably positive at any day-of-month (~₾4-7k
+  typical). No artificial spending dampener — early-month dashboards
+  honestly show low totals and grow as the month progresses.
 
 These numbers are deterministic for a given calendar day; reseeded as the
 day rolls over.

@@ -14,7 +14,7 @@ The current-month view should always include:
 - 1 IKEA purchase ₾4,280 (BOG, large outlier).
 - 1 Pulse Fitness purchase ₾95 (SOLO, brand-new merchant signal).
 - 2× Wolt declines on card `8891` within 4h of each other (yesterday).
-- Income ≥ ₾9,600 from Tech Co LLC alone (₾4800 × 2 salaries) plus freelance + refunds + Mom + Stripe Payout.
+- Income ≥ ₾15,000 from Tech Co LLC alone (₾7500 × 2 salaries) plus freelance + refunds + Mom + Stripe Payout. (Sized so /budgets has positive net cashflow at any day-of-month — see `budgets.md`.)
 
 These numbers are deterministic for a given calendar day; reseeded as the day rolls over.
 

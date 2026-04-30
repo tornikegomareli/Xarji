@@ -76,7 +76,7 @@ current month.
 - 2× Wolt declines on card `8891` within 4h of each other (yesterday).
 
 **Income current month (always present):**
-- Tech Co LLC ₾4800 × 2 (1st, 15th) salary, BOG sender.
+- Tech Co LLC ₾7500 × 2 (1st, 15th) salary, BOG sender.
 - Mid-month freelance ~₾800-2200, BOG sender (counterparty rotates:
   Design Studio, Acme GmbH, Northwind, Studio Twelve, Civic Lab).
 - Wolt refund ₾18, Carrefour refund ₾52 (SOLO).

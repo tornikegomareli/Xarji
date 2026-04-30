@@ -145,26 +145,11 @@ function buildPayments(rng: () => number, now: Date): Payment[] {
     const weekday = date.getDay();
     const weekMul = weekday === 0 || weekday === 6 ? 1.3 : 1.0;
     const recencyMul = daysBack < 45 ? 1.0 : 0.85;
-    // Dampen current-month flex spending so /budgets and the
-    // Dashboard show positive net cashflow + meaningful flex
-    // remaining in demos. Two levers, both ×0.5 → 0.25× total spend
-    // reduction. Halving the count alone wasn't enough because
-    // big-ticket merchants (Elit Electronics, Booking, Wizz Air)
-    // pull the per-transaction average up; halving the per-tx
-    // amount as well clips outlier impact without removing those
-    // merchants from the demo entirely. Past months keep full
-    // volume so the trend chart + rollover math (Phase 2) still
-    // have realistic actuals to walk over.
-    const inCurrentMonth =
-      date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
-    const countMul = inCurrentMonth ? 0.5 : 1.0;
-    const amountMul = inCurrentMonth ? 0.5 : 1.0;
-    const count = Math.max(0, Math.round((2 + rng() * 5) * weekMul * recencyMul * countMul));
+    const count = Math.max(0, Math.round((2 + rng() * 5) * weekMul * recencyMul));
 
     for (let i = 0; i < count; i++) {
       const m = pick(rng, MERCHANTS);
-      const rawBaseAmount = round2(m.range[0] + rng() * (m.range[1] - m.range[0]));
-      const baseAmount = round2(rawBaseAmount * amountMul);
+      const baseAmount = round2(m.range[0] + rng() * (m.range[1] - m.range[0]));
       const hour = 8 + Math.floor(rng() * 14);
       const minute = Math.floor(rng() * 60);
       date.setHours(hour, minute, Math.floor(rng() * 60));
@@ -329,6 +314,10 @@ function buildCredits(rng: () => number, now: Date): Credit[] {
   let n = 0;
 
   // Recurring salary: 1st and 15th of every month for 9 months.
+  // Sized so the demo has consistently positive cashflow regardless of
+  // day-of-month — flex pool stays comfortably above zero whether you
+  // open the dashboard on day 1 or day 30. Real users see their real
+  // income; this number only shapes the demo's "you have headroom" feel.
   for (let monthBack = 0; monthBack < 9; monthBack++) {
     for (const day of [1, 15]) {
       const date = new Date(now.getFullYear(), now.getMonth() - monthBack, day, 10, 0);
@@ -338,7 +327,7 @@ function buildCredits(rng: () => number, now: Date): Credit[] {
         id,
         transactionId: id,
         transactionType: "credit",
-        amount: 4800,
+        amount: 7500,
         currency: "GEL",
         counterparty: "Tech Co LLC",
         cardLastDigits: "1423",
@@ -346,7 +335,7 @@ function buildCredits(rng: () => number, now: Date): Credit[] {
         messageTimestamp: date.getTime(),
         syncedAt: Date.now(),
         bankSenderId: "BOG",
-        rawMessage: `BOG: ჩარიცხვა Tech Co LLC. თანხა: 4800 GEL.`,
+        rawMessage: `BOG: ჩარიცხვა Tech Co LLC. თანხა: 7500 GEL.`,
       });
     }
   }
