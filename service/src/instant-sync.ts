@@ -2,6 +2,7 @@ import { init, id } from "@instantdb/admin";
 import schema from "./instant-schema";
 import type { Config } from "./config";
 import type { Transaction } from "./parser";
+import type { StateDb } from "./state-db";
 
 export interface InstantSyncResult {
   success: boolean;
@@ -35,17 +36,23 @@ let syncedIds: Set<string> | null = null;
  * Rule: direction === "in" → credits, status === "failed" → failedPayments,
  * everything else → payments. The direction check runs first so a failed
  * incoming (if we ever add that kind) still lands with other incoming.
+ *
+ * Reversals are dropped before bucketing — the user's intent is "the refund
+ * didn't happen as far as my analytics is concerned" so neither outgoing
+ * spend nor incoming credit. The state-db cursor still advances past these
+ * messages in service.ts so we don't keep re-parsing them on every sync.
  */
 export function routeTransactions(transactions: Transaction[]): {
   credits: Transaction[];
   failedPayments: Transaction[];
   successfulPayments: Transaction[];
 } {
-  const credits = transactions.filter((tx) => tx.direction === "in");
-  const failedPayments = transactions.filter(
+  const visible = transactions.filter((tx) => tx.transactionType !== "reversal");
+  const credits = visible.filter((tx) => tx.direction === "in");
+  const failedPayments = visible.filter(
     (tx) => tx.direction !== "in" && tx.status === "failed"
   );
-  const successfulPayments = transactions.filter(
+  const successfulPayments = visible.filter(
     (tx) => tx.direction !== "in" && tx.status === "success"
   );
   return { credits, failedPayments, successfulPayments };
@@ -115,7 +122,8 @@ export function initInstantDB(config: Config["instantdb"]): boolean {
  */
 export async function syncTransactions(
   transactions: Transaction[],
-  bankSenderId: string
+  bankSenderId: string,
+  stateDb?: StateDb
 ): Promise<InstantSyncResult> {
   if (!db) {
     return { success: false, syncedCount: 0, paymentsCount: 0, failedPaymentsCount: 0, creditsCount: 0, error: "InstantDB not initialized" };
@@ -130,7 +138,17 @@ export async function syncTransactions(
     if (syncedIds === null) {
       syncedIds = await loadSyncedIds();
     }
-    const dedupSet = syncedIds;
+    // Merge user tombstones (state.db) into the dedup set so a deleted
+    // transaction stays gone even after its InstantDB row is removed.
+    // Pre-tombstone, the dedup logic was rebuilt-from-InstantDB-only so a
+    // deleted row's transactionId would fall out of the Set on the next
+    // restart and the SMS would re-import. Tombstones are read fresh each
+    // sync cycle (cheap — sub-millisecond on a few-thousand-row table)
+    // so a delete done while the service is running takes effect on the
+    // very next sync, not just after a restart.
+    const tombstoneIds = stateDb ? stateDb.loadDeletedTransactionIds() : new Set<string>();
+    const dedupSet =
+      tombstoneIds.size === 0 ? syncedIds : new Set([...syncedIds, ...tombstoneIds]);
     const { toSync, skipped } = applyDedup(transactions, dedupSet);
     transactions = toSync;
     if (skipped > 0) {
@@ -303,6 +321,51 @@ export async function queryFailedPayments(options?: {
  */
 export function isConnected(): boolean {
   return db !== null;
+}
+
+export type DeletableKind = "payment" | "credit" | "failedPayment";
+
+/**
+ * Delete a transaction from InstantDB plus any rows that reference it
+ * (today: `transactionCategoryOverrides.paymentId`). All ops happen in
+ * a single `db.transact` so a partial failure leaves no half-deleted
+ * state. The in-memory dedup cache is also pruned of the deleted
+ * `transactionId` so a re-encountered SMS in the same process becomes
+ * eligible for re-import (the caller's tombstone in state.db blocks
+ * the actual re-import; this just keeps the in-process Set honest).
+ */
+export async function deleteTransaction(
+  instantId: string,
+  kind: DeletableKind,
+  transactionId: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!db) return { success: false, error: "InstantDB not initialized" };
+  try {
+    const ops: unknown[] = [];
+    if (kind === "payment") {
+      ops.push(db.tx.payments[instantId].delete());
+      // Cascade: drop the per-transaction category override that
+      // references this payment, if any. Same pattern as
+      // useCategoryActions.deleteCategory does for merchant overrides.
+      const overrides = await db.query({
+        transactionCategoryOverrides: { $: { where: { paymentId: instantId } } } as any,
+      });
+      for (const o of (overrides.transactionCategoryOverrides ?? []) as Array<{ id: string }>) {
+        ops.push(db.tx.transactionCategoryOverrides[o.id].delete());
+      }
+    } else if (kind === "credit") {
+      ops.push(db.tx.credits[instantId].delete());
+    } else {
+      ops.push(db.tx.failedPayments[instantId].delete());
+    }
+    await db.transact(ops as Parameters<typeof db.transact>[0]);
+    if (syncedIds) syncedIds.delete(transactionId);
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[InstantDB] Delete error:", message);
+    return { success: false, error: message };
+  }
 }
 
 /**

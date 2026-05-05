@@ -356,6 +356,28 @@ describe("TBC parser — reversal (უKUGatareba:)", () => {
     expect(t.cardLastDigits).toBe("6109");
     expect(t.merchant).toBe("jetshr");
   });
+
+  // Inline-shape reversal: a real-world SMS reported by the user where TBC
+  // collapses header + amount + card + merchant + date + balance onto one
+  // line. The line-anchored RE_CARD_AMOUNT misses this so detect() needs
+  // RE_REVERSAL_INLINE to fire instead. The merchant extractor also takes
+  // its inline branch (substring between ")" and the date).
+  test("inline-shape reversal classified correctly", () => {
+    const t = tbcParser.parse(
+      mk(
+        700,
+        "\u10E3\u10D9\u10E3\u10D2\u10D0\u10E2\u10D0\u10E0\u10D4\u10D1\u10D0: 13.90 GEL TBC Concept 360 VISA Signature (***8058) BOLTTAXI 05/05/2026 17:25:01 \u10DC\u10D0\u10E8\u10D7\u10D8: 400.00 GEL"
+      )
+    )!;
+    expect(t.transactionType).toBe("reversal");
+    expect(t.direction).toBe("in");
+    expect(t.status).toBe("success");
+    expect(t.amount).toBe(13.9);
+    expect(t.currency).toBe("GEL");
+    expect(t.cardLastDigits).toBe("8058");
+    expect(t.merchant).toBe("BOLTTAXI");
+    expect(t.balance).toBe(400);
+  });
 });
 
 // ── Self-transfers ─────────────────────────────────────────────────────────

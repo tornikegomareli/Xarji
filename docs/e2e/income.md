@@ -87,3 +87,52 @@ This pins the Codex HIGH fix from PR #16 (`0e8803a`).
 **Expected**
 - Tooltip shows bucket label + `₾<value>` + (if prior bucket exists) `vs <prev label> ₾<prev value> ±X%`.
 - Same theme rules as Dashboard trend tooltip.
+
+---
+
+## T-INC-07 — Detail panel exclude toggle (added in tombstone-delete PR)
+
+**Steps**
+1. Click any credit row to open the detail panel.
+2. Find the `In analytics` row near the bottom; the button reads `Included · exclude`.
+3. Click it.
+
+**Expected**
+- Button flips to `Excluded · re-include` with dimmed background.
+- The credit no longer counts toward the hero `+₾<total>` or the 9-month trend.
+- The row stays visible in the ledger but renders the "Excluded" pill (same as transactions).
+- Click `Excluded · re-include` to restore — totals come back.
+
+---
+
+## T-INC-08 — Detail panel delete confirm dialog
+
+**Steps**
+1. Open detail panel, find the `Permanent` row, click `Delete`.
+
+**Expected**
+- `window.confirm` shows: counterparty + `+<currency><amount>` + date + the tombstone warning.
+
+---
+
+## T-INC-09 — Delete accept removes credit + closes panel
+
+**Steps**
+1. Open detail panel, click `Delete`, click `OK`.
+
+**Expected**
+- Detail panel closes.
+- The credit vanishes from the ledger.
+- Hero `+₾<total>` recomputes lower by exactly the deleted credit's GEL-equivalent.
+- After page reload, the credit is still gone.
+
+---
+
+## T-INC-10 — Deleted credit stays gone after service sync (real data)
+
+**Steps**
+1. Delete a real-data credit via T-INC-09.
+2. Open `/manage`, click `Sync now`.
+
+**Expected**
+- The credit does NOT reappear after sync completes — same tombstone path as T-TX-17.
