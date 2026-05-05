@@ -171,12 +171,17 @@ export function PageHeader({
   eyebrow,
   title,
   rightSlot,
-  ranges = ["Today", "Week", "Month", "Year", "Custom"],
+  ranges = ["Today", "Week", "Month", "Year", "Custom", "Cycle"],
   active = "Month",
   onRange,
   customStart,
   customEnd,
   onCustomChange,
+  cycleDay,
+  cycleLabel,
+  onCycleDayChange,
+  onCyclePrev,
+  onCycleNext,
 }: {
   eyebrow?: React.ReactNode;
   title: React.ReactNode;
@@ -189,9 +194,38 @@ export function PageHeader({
   customEnd?: string;
   /** Fired whenever either custom date input changes. */
   onCustomChange?: (start: string, end: string) => void;
+  /** 1–31; the cycle-start day of month, only used when active === "Cycle". */
+  cycleDay?: number;
+  /** Formatted label for the active cycle, e.g. "Apr 25 – May 24, 2026". */
+  cycleLabel?: string;
+  onCycleDayChange?: (day: number) => void;
+  onCyclePrev?: () => void;
+  onCycleNext?: () => void;
 }) {
   const T = useTheme();
   const showCustomInputs = ranges && ranges.includes("Custom") && active === "Custom" && onCustomChange;
+  const showCycleControls = active === "Cycle" && onCyclePrev;
+
+  const pillStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 8px",
+    background: T.panel,
+    borderRadius: 12,
+    border: `1px solid ${T.line}`,
+  };
+  const navBtnStyle: React.CSSProperties = {
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    color: T.muted,
+    fontSize: 14,
+    padding: "2px 6px",
+    borderRadius: 6,
+    lineHeight: 1,
+    fontFamily: T.mono,
+  };
 
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, marginBottom: 6, flexWrap: "wrap" }}>
@@ -204,17 +238,7 @@ export function PageHeader({
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         {rightSlot}
         {showCustomInputs && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "4px 8px",
-              background: T.panel,
-              borderRadius: 12,
-              border: `1px solid ${T.line}`,
-            }}
-          >
+          <div style={pillStyle}>
             <input
               type="date"
               value={customStart ?? ""}
@@ -247,6 +271,41 @@ export function PageHeader({
               }}
             />
           </div>
+        )}
+        {showCycleControls && (
+          <>
+            <div style={pillStyle}>
+              <button type="button" style={navBtnStyle} onClick={onCyclePrev} title="Previous cycle">←</button>
+              <span style={{ fontSize: 12, fontFamily: T.mono, color: T.text, whiteSpace: "nowrap", padding: "0 2px" }}>
+                {cycleLabel}
+              </span>
+              <button type="button" style={navBtnStyle} onClick={onCycleNext} title="Next cycle">→</button>
+            </div>
+            <div style={{ ...pillStyle, gap: 4 }}>
+              <span style={{ fontSize: 11, color: T.muted, fontFamily: T.sans, whiteSpace: "nowrap" }}>Day</span>
+              <input
+                type="number"
+                min={1}
+                max={31}
+                value={cycleDay ?? 25}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  if (!Number.isNaN(v)) onCycleDayChange?.(v);
+                }}
+                style={{
+                  width: 38,
+                  background: "transparent",
+                  border: "none",
+                  color: T.text,
+                  fontSize: 12,
+                  fontFamily: T.mono,
+                  padding: "4px 4px",
+                  outline: "none",
+                  textAlign: "center",
+                }}
+              />
+            </div>
+          </>
         )}
         {ranges && (
           <div style={{ display: "flex", background: T.panel, borderRadius: 12, padding: 3, border: `1px solid ${T.line}` }}>

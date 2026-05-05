@@ -20,9 +20,9 @@ import {
   format,
 } from "date-fns";
 
-export type RangeKey = "Today" | "Week" | "Month" | "Year" | "Custom";
+export type RangeKey = "Today" | "Week" | "Month" | "Year" | "Custom" | "Cycle";
 
-export const RANGE_OPTIONS: RangeKey[] = ["Today", "Week", "Month", "Year", "Custom"];
+export const RANGE_OPTIONS: RangeKey[] = ["Today", "Week", "Month", "Year", "Custom", "Cycle"];
 
 export interface DateRange {
   /** Inclusive start, local time. */
@@ -39,6 +39,27 @@ export interface DateRange {
 export interface CustomRange {
   start: string; // YYYY-MM-DD
   end: string;
+  cycleDay?: number;   // 1–31; which day of the month each cycle starts
+  cycleOffset?: number; // 0 = current cycle, -1 = previous, +1 = next
+}
+
+/** Compute a pay-cycle DateRange for a given cycle-start day and offset.
+ *  offset=0 → the cycle whose start day most recently passed (current);
+ *  offset=-1 → the one before that; offset=+1 → the upcoming one. */
+export function rangeFromCycle(cycleDay: number, offset: number, now: Date): DateRange {
+  const day = Math.max(1, Math.min(31, Math.round(cycleDay)));
+  // Determine the base month: the most recent month where day ≤ today.
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), day);
+  const baseMonth = thisMonthStart > now ? now.getMonth() - 1 : now.getMonth();
+  // JS Date constructor handles month underflow/overflow automatically.
+  const startDate = new Date(now.getFullYear(), baseMonth + offset, day);
+  const endDate = endOfDay(new Date(startDate.getFullYear(), startDate.getMonth() + 1, day - 1));
+  return {
+    start: startOfDay(startDate),
+    end: endDate,
+    label: `${format(startDate, "MMM d")} – ${format(endDate, "MMM d, yyyy")}`,
+    key: "Cycle",
+  };
 }
 
 /** Build a DateRange from the active button + optional custom dates.
@@ -69,6 +90,8 @@ export function rangeFromKey(key: RangeKey, now: Date, custom?: CustomRange): Da
       const end = endOfYear(now);
       return { start, end, label: format(start, "yyyy"), key };
     }
+    case "Cycle":
+      return rangeFromCycle(custom?.cycleDay ?? 25, custom?.cycleOffset ?? 0, now);
     case "Custom": {
       if (isValidIsoDateRange(custom)) {
         // <input type="date"> emits YYYY-MM-DD which `new Date(...)`
@@ -147,6 +170,8 @@ export function previousRange(range: DateRange): DateRange {
       return { start: startOfMonth(prevStart), end: endOfMonth(prevStart), label: format(prevStart, "MMMM yyyy"), key: "Month" };
     case "Year":
       return { start: startOfYear(prevStart), end: endOfYear(prevStart), label: format(prevStart, "yyyy"), key: "Year" };
+    case "Cycle":
+      return { start: prevStart, end: prevEnd, label: `${format(prevStart, "MMM d")} – ${format(prevEnd, "MMM d, yyyy")}`, key: "Cycle" };
     case "Custom":
     default:
       return { start: prevStart, end: prevEnd, label: `${format(prevStart, "MMM d")} – ${format(prevEnd, "MMM d, yyyy")}`, key: "Custom" };

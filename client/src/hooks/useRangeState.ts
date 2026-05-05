@@ -12,6 +12,12 @@ export interface RangeStateProps {
   customStart: string;
   customEnd: string;
   onCustomChange: (start: string, end: string) => void;
+  cycleDay: number;
+  cycleOffset: number;
+  cycleLabel: string;
+  onCycleDayChange: (day: number) => void;
+  onCyclePrev: () => void;
+  onCycleNext: () => void;
 }
 
 export interface UseRangeStateResult {
@@ -26,6 +32,11 @@ export interface UseRangeStateOptions {
   customInitial?: { start: string; end: string };
 }
 
+function loadCycleDay(): number {
+  const stored = parseInt(localStorage.getItem("xarji-cycle-day") ?? "25", 10);
+  return Number.isNaN(stored) ? 25 : Math.max(1, Math.min(31, stored));
+}
+
 export function useRangeState(
   initial: RangeKey = "Month",
   options?: UseRangeStateOptions
@@ -35,30 +46,41 @@ export function useRangeState(
   const [active, setActive] = useState<RangeKey>(useCustom ? "Custom" : initial);
   const [customStart, setCustomStart] = useState(useCustom ? customInitial!.start : "");
   const [customEnd, setCustomEnd] = useState(useCustom ? customInitial!.end : "");
-  // `clockTick` advances at the next local-midnight boundary so a
-  // long-lived dashboard tab doesn't keep showing yesterday's "Today"
-  // (or the previous month's "Month") after the calendar rolls over.
-  // Including it in the memo deps below recomputes the range without
-  // wedging it on a stale `new Date()` from the initial render.
+  const [cycleDay, setCycleDay] = useState<number>(loadCycleDay);
+  const [cycleOffset, setCycleOffset] = useState(0);
   const clockTick = useMidnightTick();
 
   const range = useMemo(
-    () => rangeFromKey(active, new Date(), { start: customStart, end: customEnd }),
+    () => rangeFromKey(active, new Date(), { start: customStart, end: customEnd, cycleDay, cycleOffset }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [active, customStart, customEnd, clockTick]
+    [active, customStart, customEnd, cycleDay, cycleOffset, clockTick]
   );
 
   return {
     range,
     props: {
       active,
-      onRange: (k) => setActive(k as RangeKey),
+      onRange: (k) => {
+        if (k === "Cycle") setCycleOffset(0);
+        setActive(k as RangeKey);
+      },
       customStart,
       customEnd,
       onCustomChange: (start, end) => {
         setCustomStart(start);
         setCustomEnd(end);
       },
+      cycleDay,
+      cycleOffset,
+      cycleLabel: range.key === "Cycle" ? range.label : "",
+      onCycleDayChange: (day) => {
+        const clamped = Math.max(1, Math.min(31, day));
+        setCycleDay(clamped);
+        localStorage.setItem("xarji-cycle-day", String(clamped));
+        setCycleOffset(0);
+      },
+      onCyclePrev: () => setCycleOffset((o) => o - 1),
+      onCycleNext: () => setCycleOffset((o) => o + 1),
     },
   };
 }
