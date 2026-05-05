@@ -15,6 +15,34 @@ export function useCategories() {
   return { categories, isLoading, error };
 }
 
+/**
+ * DB categories merged with DEFAULT_CATEGORIES so every category is
+ * visible even before the user has saved it to InstantDB. DB rows win
+ * on name collision (preserving renames/recolors). Defaults that have
+ * no DB counterpart appear with no budget fields set (unclassified).
+ *
+ * Use this anywhere you need "all categories including defaults" with
+ * the full Category shape (budget fields). For display-only use cases
+ * prefer `useCategorizer().allCategories` (returns InkCategory[]).
+ */
+export function useMergedCategories(): Category[] {
+  const { categories: dbCats } = useCategories();
+
+  return useMemo(() => {
+    const dbByName = new Map<string, Category>();
+    for (const c of dbCats) {
+      if (c.name) dbByName.set(c.name.toLowerCase(), c);
+    }
+    const extras: Category[] = [];
+    for (const def of DEFAULT_CATEGORIES) {
+      if (!dbByName.has(def.name.toLowerCase())) {
+        extras.push({ id: def.id, name: def.name, color: def.color, icon: def.icon, isDefault: true });
+      }
+    }
+    return [...dbCats, ...extras];
+  }, [dbCats]);
+}
+
 export function useCategoryActions() {
   // Read overrides synchronously so deleteCategory can clean up any
   // dangling rows in the same transact call. Without this, deleting
