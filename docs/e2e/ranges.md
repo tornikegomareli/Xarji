@@ -110,8 +110,10 @@ This pins `rangeToDateParams` and the threading through every drill-down call si
 2. Switch to **Week** → same.
 3. Switch to **Month** → same.
 4. Switch to **Year** → same.
+5. Switch to **Cycle** → same.
 
 **Expected**
 - Each pill compares against the equivalent prior period (yesterday, last
-  week, last month, last year). The label format on the pill matches the
+  week, last month, last year, previous cycle). The label format on the pill matches the
   source range shape.
+- Cycle: prior period is the previous ~30-day cycle window (e.g. if active is Apr 25–May 24, prev is Mar 25–Apr 24).

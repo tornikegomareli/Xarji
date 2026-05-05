@@ -29,7 +29,7 @@ These numbers are deterministic for a given calendar day; reseeded as the day ro
 **Expected**
 - Eyebrow: `Good morning|afternoon|evening` (depending on local hour).
 - Title: `<current month name> <year>, at a glance` (e.g. `April 2026, at a glance`).
-- Range buttons visible top-right: **Today / Week / Month / Year / Custom** with **Month** highlighted.
+- Range buttons visible top-right: **Today / Week / Month / Year / Custom / Cycle** with **Month** highlighted.
 - Sidebar shows ~1,000+ transactions counter (proves demo mode is active).
 - Hero "You spent" figure ≥ ₾10,000 (current-month payments + IKEA outlier + recurring subs).
 - Subline: `±₾<delta> more|less than <prev month name> · <N> days · <count> transactions` where `<N>` ≤ days elapsed in the month and `<count>` ≥ 100 on demo data.
@@ -46,16 +46,18 @@ These numbers are deterministic for a given calendar day; reseeded as the day ro
 2. Click **Year**.
 3. Click **Custom**, then set `From` and `To` date inputs to a known window (e.g. last 30 days).
 4. Click **Today**.
-5. Click **Month** to return.
+5. Click **Cycle** — leave the default day (25). Use ← → to navigate one cycle back and one cycle forward.
+6. Click **Month** to return.
 
 **Expected (each step)**
-- Eyebrow on the hero card updates: e.g. Week → "OUTGOING · <Mon-Sun range>", Year → "OUTGOING · <year>", Custom → "OUTGOING · <Mmm d – Mmm d>", Today → "OUTGOING · <full date>".
+- Eyebrow on the hero card updates: e.g. Week → "OUTGOING · <Mon-Sun range>", Year → "OUTGOING · <year>", Custom → "OUTGOING · <Mmm d – Mmm d>", Today → "OUTGOING · <full date>", Cycle → "OUTGOING · <Mmm d – Mmm d, yyyy>".
 - Page title updates: "<range.label>, at a glance" — e.g. "2026, at a glance" for Year, "April 1 – April 27, 2026, at a glance" for Custom.
 - "You spent" figure recomputes; Year ≥ Month, Today usually small, Week ≤ Month.
 - Subline `<N> days · <count> transactions` matches the active range length capped at days elapsed (Today = 1, Week ≤ 7, Year up to 117 in late April).
 - Donut center label matches the range (e.g. Year → `<year>`, Month → uppercase month name, Today → date label).
 - Top merchants title reads "Top merchants · <range.label>".
 - Custom button: when active, two `<input type="date">` controls render inline in the header.
+- Cycle button: when active, a `← [Mmm d – Mmm d, yyyy] →` navigation pill and a `Day [N]` input appear inline; ← shifts to the prior cycle, → shifts forward.
 
 ---
 

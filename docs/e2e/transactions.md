@@ -25,7 +25,7 @@ sidebar). Default range: **Month**.
 **Expected**
 - Eyebrow: "All transactions · read-only from SMS".
 - Title: "Transactions".
-- Range buttons visible top-right with **Month** highlighted.
+- Range buttons visible top-right (**Today / Week / Month / Year / Custom / Cycle**) with **Month** highlighted.
 - "<N> results" pill in the top-right reflects the visible filtered count.
 - Filter row: search box, kind pills (All / Successful / Declined), bank dropdown, category dropdown.
 - Day-grouped list newest-first, each day group has its date label + transaction count + GEL day-total.
@@ -35,13 +35,15 @@ sidebar). Default range: **Month**.
 ## T-TX-02 — Range buttons re-scope the ledger
 
 **Steps**
-1. From Month, click **Today / Week / Year / Custom** in turn.
+1. From Month, click **Today / Week / Year / Custom / Cycle** in turn.
 2. With Custom, set `From`/`To` and verify the list updates.
+3. With Cycle, use ← → to navigate one cycle back; verify the day-group dates match the cycle window shown in the nav pill.
 
 **Expected**
 - "<N> results" updates to reflect the active range.
 - Day groups visible all fall within the active range.
-- Custom date inputs in the header show the picked window.
+- Custom: date inputs appear inline in the header.
+- Cycle: `← [Mmm d – Mmm d, yyyy] →` nav pill and `Day [N]` input appear; transactions outside the cycle window are absent.
 
 ---
 
