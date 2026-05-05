@@ -5,10 +5,11 @@
 import { useCallback, useMemo } from "react";
 import { id } from "@instantdb/react";
 import { db, type BudgetPlan, type Category } from "../lib/instant";
-import { useCategories } from "./useCategories";
+import { useCategories, useMergedCategories } from "./useCategories";
 import { useConvertedCredits } from "./useCredits";
 import { useConvertedPayments } from "./useTransactions";
 import { useCategorizer } from "./useCategorizer";
+import { DEFAULT_CATEGORIES } from "../lib/utils";
 import {
   anchorMonthFromPlans,
   bucketMonthlyCommitment,
@@ -80,7 +81,7 @@ export function useExpectedIncomeDefault(now = new Date()): number {
 export function useBudgetPlan(planMonth = planMonthKey()) {
   const { plans, isLoading, error } = useBudgetPlans();
   const expectedIncomeAuto = useExpectedIncomeDefault();
-  const { categories } = useCategories();
+  const categories = useMergedCategories();
 
   return useMemo(() => {
     const stored = plans.find((p) => p.planMonth === planMonth) ?? null;
@@ -131,7 +132,7 @@ export function useBudgetPlan(planMonth = planMonthKey()) {
  * hadn't started budgeting yet, so we don't retro-credit nor debit.
  */
 export function useBudgetSummary(planMonth = planMonthKey()) {
-  const { categories } = useCategories();
+  const categories = useMergedCategories();
   const { payments } = useConvertedPayments();
   const { categorize } = useCategorizer();
   const { plans } = useBudgetPlans();
@@ -238,10 +239,26 @@ export function useBudgetSummary(planMonth = planMonthKey()) {
  */
 export function useBudgetMutations() {
   const { plans } = useBudgetPlans();
+  const { categories: dbCats } = useCategories();
   const setCategoryBucket = useCallback(async (categoryId: string, bucket: Bucket | null) => {
+    // If this id belongs to a DEFAULT_CATEGORY that hasn't been written
+    // to DB yet, seed a full row first so name/color/icon aren't lost
+    // when only `bucket` is set.
+    const existsInDb = dbCats.some((c) => c.id === categoryId);
+    if (!existsInDb) {
+      const def = DEFAULT_CATEGORIES.find((d) => d.id === categoryId);
+      if (def) {
+        await db.transact(
+          db.tx.categories[categoryId].update({
+            name: def.name,
+            color: def.color,
+            icon: def.icon,
+            isDefault: true,
+          })
+        );
+      }
+    }
     if (bucket === null) {
-      // Unclassify: clear bucket + target + frequency + rollover so
-      // the row resets to its pre-Phase-1 shape. Keep name/color/icon.
       await db.transact(
         db.tx.categories[categoryId].update({
           bucket: undefined,
@@ -253,7 +270,7 @@ export function useBudgetMutations() {
     } else {
       await db.transact(db.tx.categories[categoryId].update({ bucket }));
     }
-  }, []);
+  }, [dbCats]);
 
   const setCategoryTarget = useCallback(
     async (
