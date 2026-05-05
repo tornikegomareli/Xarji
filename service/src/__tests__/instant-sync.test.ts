@@ -209,6 +209,42 @@ describe("StateDb tombstones", () => {
     expect(skipped).toBe(1);
   });
 
+  test("partial-failure retry: warm syncedIds cache must catch the second pass even when tombstones exist", () => {
+    // Codex P2 on PR #46. processNewMessages intentionally retries the
+    // same SMS batch when a non-InstantDB target (webhook/local) fails,
+    // without marking the message as processed in state.db. The
+    // InstantDB-side dedup must still skip the already-written row on
+    // that retry — otherwise a duplicate InstantDB row gets inserted.
+    //
+    // The bug being guarded: when tombstones exist, the dedup-check Set
+    // is a temporary union of syncedIds + tombstones. If
+    // syncTransactions only added the just-written id to that temporary
+    // Set (instead of the persistent syncedIds), the next call would
+    // rebuild the union from a stale syncedIds and re-import the row.
+    //
+    // This test simulates the production sequence directly without
+    // standing up InstantDB: build the union, mark a row "written" by
+    // adding to the persistent set, then check that the next sync's
+    // freshly-built union still treats the row as already-synced.
+    db.markTransactionDeleted("tomb-1", "payment");
+    const syncedIds = new Set<string>(); // simulates module-level cache
+    const buildUnion = () =>
+      new Set([...syncedIds, ...db.loadDeletedTransactionIds()]);
+
+    // Sync 1: row "tx-A" not in either set, should be selected for write.
+    const sync1 = applyDedup([tx({ id: "tx-A" })], buildUnion());
+    expect(sync1.toSync.map((t) => t.id)).toEqual(["tx-A"]);
+
+    // Imitate the post-write step: mark tx-A in the persistent set.
+    for (const t of sync1.toSync) syncedIds.add(t.id);
+
+    // Sync 2 (retry path): same input, freshly-built union from the
+    // *persistent* syncedIds + tombstones. tx-A must now be deduped.
+    const sync2 = applyDedup([tx({ id: "tx-A" })], buildUnion());
+    expect(sync2.toSync).toEqual([]);
+    expect(sync2.skipped).toBe(1);
+  });
+
   test("tombstones survive close + reopen (persistent)", () => {
     db.markTransactionDeleted("tx-survives", "payment");
     db.close();

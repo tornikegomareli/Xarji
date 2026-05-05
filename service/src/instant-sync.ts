@@ -228,8 +228,14 @@ export async function syncTransactions(
     if (operations.length > 0) {
       await db.transact(operations);
       // Record the ids we just wrote so a subsequent call in the same process
-      // won't retry them.
-      for (const tx of transactions) dedupSet.add(tx.id);
+      // won't retry them. Write to the persistent `syncedIds`, NOT
+      // `dedupSet` — when tombstones exist, dedupSet is a temporary copy
+      // (union of syncedIds + tombstones) and any add() against it would be
+      // discarded after this turn. processNewMessages's intentional retry-
+      // without-marking-processed flow then re-presents the same SMS on the
+      // next sync and would insert duplicate InstantDB rows. (Codex P2 on
+      // PR #46.)
+      for (const tx of transactions) syncedIds.add(tx.id);
     }
 
     console.log(
