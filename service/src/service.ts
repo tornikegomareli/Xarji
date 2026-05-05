@@ -25,7 +25,10 @@ export interface SyncOutcome {
 
 export class ExpenseTrackerService {
   private config: Config;
-  private stateDb: StateDb | null = null;
+  // Public so HTTP handlers can reach the tombstone helpers without
+  // routing every state.db touch through the service surface. Still
+  // null until init() runs, so callers must check before use.
+  public stateDb: StateDb | null = null;
   private watcher: ReturnType<typeof watch> | null = null;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
   private isProcessing = false;
@@ -132,8 +135,11 @@ export class ExpenseTrackerService {
             continue;
           }
 
-          // Sync to all targets (local, webhook, InstantDB)
-          const syncResults = await syncAllTargets(newTransactions, this.config, senderId);
+          // Sync to all targets (local, webhook, InstantDB). Pass stateDb
+          // so the InstantDB dedup path can union user tombstones into
+          // its skip set; without this, deleted transactions would
+          // re-import on the next sync.
+          const syncResults = await syncAllTargets(newTransactions, this.config, senderId, this.stateDb!);
 
           // Determine which targets are enabled, then collect failures.
           // Local file is always enabled (it's the failsafe backup).

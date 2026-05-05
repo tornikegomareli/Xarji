@@ -4,7 +4,7 @@ import { useTheme, useViewport, type InkTheme } from "../ink/theme";
 import { Card, CardLabel, PageHeader } from "../ink/primitives";
 import { TxRow, type InkTx } from "../ink/TxRow";
 import { CategoryPicker } from "../components/CategoryPicker";
-import { useConvertedPayments, useFailedPayments, useTransactionExclude } from "../hooks/useTransactions";
+import { useConvertedPayments, useFailedPayments, useTransactionDelete, useTransactionExclude } from "../hooks/useTransactions";
 import { useBankSenders } from "../hooks/useBankSenders";
 import { useRangeState } from "../hooks/useRangeState";
 import { isInRange, isValidIsoDateRange } from "../lib/dateRange";
@@ -19,6 +19,7 @@ export function Transactions() {
   const { payments } = useConvertedPayments();
   const { failedPayments } = useFailedPayments();
   const setExcluded = useTransactionExclude();
+  const deleteTx = useTransactionDelete();
   const { senders } = useBankSenders();
   const { categorize: categorizeId, allCategories } = useCategorizer();
   // Drill-down search params accepted on first paint. Anything that doesn't
@@ -55,6 +56,7 @@ export function Transactions() {
     const combined: InkTx[] = [
       ...payments.map((p) => ({
         id: p.id,
+        transactionId: p.transactionId,
         kind: "payment" as const,
         merchant: p.merchant || "",
         rawMerchant: p.rawMessage,
@@ -70,6 +72,7 @@ export function Transactions() {
       })),
       ...failedPayments.map((f) => ({
         id: f.id,
+        transactionId: f.transactionId,
         kind: "failed" as const,
         merchant: f.merchant || "",
         rawMerchant: f.rawMessage,
@@ -400,6 +403,35 @@ export function Transactions() {
                   }}
                 />
               )}
+              {selected.kind !== "failed" && selected.transactionId && (
+                <DeleteRow
+                  T={T}
+                  onDelete={async () => {
+                    const dateStr = new Date(selected.transactionDate).toLocaleString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    });
+                    const amountStr = selected.amount != null
+                      ? `${currencySymbol(selected.currency)}${selected.amount.toFixed(2)}`
+                      : "—";
+                    const merchant = selected.merchant || selected.counterparty || "Unknown";
+                    if (
+                      !window.confirm(
+                        `Delete this transaction?\n\n${merchant} · ${amountStr} · ${dateStr}\n\nIt will be removed from InstantDB and tombstoned so the next SMS sync won't re-import it. This cannot be undone.`
+                      )
+                    ) {
+                      return;
+                    }
+                    await deleteTx(
+                      selected.kind === "credit" ? "credit" : "payment",
+                      selected.id,
+                      selected.transactionId!
+                    );
+                    setSelectedId(null);
+                  }}
+                />
+              )}
             </div>
             <div style={{ marginTop: 18 }}>
               <CardLabel>Raw SMS</CardLabel>
@@ -484,6 +516,64 @@ function ExcludeToggleRow({
         }}
       >
         {excluded ? "Excluded · re-include" : "Included · exclude"}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Permanent-delete affordance in the detail panel. Sits below the
+ * Exclude toggle and rendered in destructive accent so the user can't
+ * confuse it with the soft-toggle. Goes through useTransactionDelete
+ * which calls the bun service so the tombstone is recorded — without
+ * that, the next SMS sync would re-import the row.
+ */
+function DeleteRow({
+  T,
+  onDelete,
+}: {
+  T: InkTheme;
+  onDelete: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const handle = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onDelete();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "8px 0",
+        borderBottom: `1px solid ${T.line}`,
+      }}
+    >
+      <span style={{ fontSize: 12, color: T.muted, fontFamily: T.sans }}>Permanent</span>
+      <button
+        type="button"
+        onClick={handle}
+        disabled={busy}
+        title="Remove this transaction from InstantDB and tombstone it so SMS resyncs don't re-import it"
+        style={{
+          padding: "4px 10px",
+          borderRadius: 999,
+          border: `1px solid ${T.accent}55`,
+          background: "transparent",
+          color: T.accent,
+          fontSize: 11.5,
+          fontWeight: 600,
+          fontFamily: T.sans,
+          cursor: busy ? "not-allowed" : "pointer",
+        }}
+      >
+        {busy ? "Deleting…" : "Delete"}
       </button>
     </div>
   );

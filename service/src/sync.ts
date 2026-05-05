@@ -146,7 +146,8 @@ export function initSyncTargets(config: Config): void {
 async function syncToInstant(
   transactions: Transaction[],
   config: Config,
-  bankSenderId: string
+  bankSenderId: string,
+  stateDb?: import("./state-db").StateDb
 ): Promise<SyncResult> {
   if (!config.instantdb.enabled) {
     return { success: true, syncedCount: 0 };
@@ -160,7 +161,7 @@ async function syncToInstant(
     }
   }
 
-  const result = await syncToInstantDB(transactions, bankSenderId);
+  const result = await syncToInstantDB(transactions, bankSenderId, stateDb);
   return {
     success: result.success,
     syncedCount: result.syncedCount,
@@ -169,17 +170,21 @@ async function syncToInstant(
 }
 
 /**
- * Sync transactions to all configured targets
+ * Sync transactions to all configured targets. The optional `stateDb`
+ * is threaded into the InstantDB path so the dedup logic can union
+ * user-tombstoned transactionIds into its skip set; without it, deleted
+ * transactions would re-import on the next sync.
  */
 export async function syncAllTargets(
   transactions: Transaction[],
   config: Config,
-  bankSenderId: string = "SOLO"
+  bankSenderId: string = "SOLO",
+  stateDb?: import("./state-db").StateDb
 ): Promise<{ local: SyncResult; webhook: SyncResult; instantdb: SyncResult }> {
   const [local, webhook, instantdb] = await Promise.all([
     syncToLocalFile(transactions, config.localBackupPath),
     syncToWebhook(transactions, config.webhook),
-    syncToInstant(transactions, config, bankSenderId),
+    syncToInstant(transactions, config, bankSenderId, stateDb),
   ]);
 
   return { local, webhook, instantdb };

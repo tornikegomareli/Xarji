@@ -32,6 +32,7 @@ import {
 import { patchConfig, CONFIG_PATH } from "./config";
 import { getProvider, serialiseEvent } from "./ai";
 import type { AIProviderId, AIStreamRequest } from "./ai/types";
+import { deleteTransaction } from "./instant-sync";
 
 export interface HttpServerOptions {
   port: number;
@@ -377,6 +378,58 @@ export function startHttpServer(opts: HttpServerOptions): HttpServerHandle {
         if (!opts.service) return json({ error: "Service not running" }, { status: 503 });
         const outcome = await opts.service.processNewMessages();
         return json(outcome);
+      }
+      if (path === "/api/transactions/delete" && req.method === "POST") {
+        const csrf = assertSafeOrigin(req);
+        if (csrf) return csrf;
+        if (!opts.service || !opts.service.stateDb) {
+          return json({ error: "Service not running" }, { status: 503 });
+        }
+        const stateDb = opts.service.stateDb;
+        let body: { transactionId?: string; instantId?: string; kind?: string };
+        try {
+          body = (await req.json()) as typeof body;
+        } catch {
+          return json({ error: "Invalid JSON body" }, { status: 400 });
+        }
+        const { transactionId, instantId, kind } = body;
+        if (typeof transactionId !== "string" || !transactionId) {
+          return json({ error: "`transactionId` is required" }, { status: 400 });
+        }
+        if (typeof instantId !== "string" || !instantId) {
+          return json({ error: "`instantId` is required" }, { status: 400 });
+        }
+        if (kind !== "payment" && kind !== "credit" && kind !== "failedPayment") {
+          return json(
+            { error: "`kind` must be 'payment', 'credit', or 'failedPayment'" },
+            { status: 400 }
+          );
+        }
+        // Delete from InstantDB FIRST. If the InstantDB delete fails the
+        // tombstone is never written, so on next sync the SMS does NOT
+        // get blocked from re-importing — the user keeps the row and
+        // can retry. Reversed order would orphan a tombstone on a failed
+        // delete and silently drop the SMS forever.
+        const deleteResult = await deleteTransaction(instantId, kind, transactionId);
+        if (!deleteResult.success) {
+          return json(
+            { deleted: false, error: deleteResult.error ?? "delete failed" },
+            { status: 502 }
+          );
+        }
+        try {
+          stateDb.markTransactionDeleted(transactionId, kind);
+        } catch (err) {
+          // Tombstone failed but InstantDB delete succeeded. The user
+          // sees the row gone; on next sync the SMS will re-import.
+          // Log loudly so we can spot this in real usage.
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(
+            `[delete] tombstone write failed for ${transactionId}: ${message} — row will re-import on next sync`
+          );
+          return json({ deleted: true, tombstoned: false, warning: message });
+        }
+        return json({ deleted: true, tombstoned: true });
       }
       if (path === "/api/exchange-rate" && req.method === "GET") {
         const dateParam = url.searchParams.get("date");

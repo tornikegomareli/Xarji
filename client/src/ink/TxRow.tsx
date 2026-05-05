@@ -7,6 +7,13 @@ import { formatTime, currencySymbol } from "./format";
 
 export interface InkTx {
   id: string;
+  /** SMS-derived stable id (e.g. `tbc-2026-05-05-...`). Distinct from
+   *  `id` which is the InstantDB row id. The delete flow sends both
+   *  to the service: `id` for the InstantDB delete, `transactionId`
+   *  for the state.db tombstone that prevents re-import on next sync.
+   *  Optional because failed-payment rows are read-only (no delete
+   *  surface today). */
+  transactionId?: string;
   kind: "payment" | "failed" | "credit";
   merchant: string;
   rawMerchant?: string;

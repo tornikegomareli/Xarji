@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { useTheme, useViewport } from "../ink/theme";
+import { useTheme, useViewport, type InkTheme } from "../ink/theme";
 import { Card, CardLabel, CardTitle, Pill, PageHeader } from "../ink/primitives";
 import { TxRow, type InkTx } from "../ink/TxRow";
 import { useConvertedCredits, useRangeCredits } from "../hooks/useCredits";
+import { useTransactionDelete, useTransactionExclude } from "../hooks/useTransactions";
 import { useBankSenders } from "../hooks/useBankSenders";
 import { useRangeState } from "../hooks/useRangeState";
 import { AreaChart } from "../ink/charts";
@@ -13,6 +14,8 @@ import { format, subMonths } from "date-fns";
 export function Income() {
   const T = useTheme();
   const vp = useViewport();
+  const setExcluded = useTransactionExclude();
+  const deleteTx = useTransactionDelete();
   const now = new Date();
   const { range, props: rangeProps } = useRangeState("Month");
   const { credits } = useConvertedCredits();
@@ -48,6 +51,7 @@ export function Income() {
   const allTx: InkTx[] = useMemo(() => {
     return credits.map((c) => ({
       id: c.id,
+      transactionId: c.transactionId,
       kind: "credit" as const,
       merchant: c.counterparty || "Income",
       rawMerchant: c.rawMessage,
@@ -417,6 +421,36 @@ export function Income() {
                   <span style={{ fontSize: 12.5, color: T.text, fontFamily: T.sans, fontWeight: 600 }}>{v}</span>
                 </div>
               ))}
+              <ExcludeToggleRow
+                T={T}
+                excluded={!!selected.excludedFromAnalytics}
+                onToggle={async (next) => {
+                  await setExcluded("credit", selected.id, next);
+                }}
+              />
+              {selected.transactionId && (
+                <DeleteRow
+                  T={T}
+                  onDelete={async () => {
+                    const dateStr = new Date(selected.transactionDate).toLocaleString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    });
+                    const amountStr = `${currencySymbol(selected.currency)}${(selected.amount ?? 0).toFixed(2)}`;
+                    const counterparty = selected.counterparty || selected.merchant || "Income";
+                    if (
+                      !window.confirm(
+                        `Delete this credit?\n\n${counterparty} · +${amountStr} · ${dateStr}\n\nIt will be removed from InstantDB and tombstoned so the next SMS sync won't re-import it. This cannot be undone.`
+                      )
+                    ) {
+                      return;
+                    }
+                    await deleteTx("credit", selected.id, selected.transactionId!);
+                    setSelectedId(null);
+                  }}
+                />
+              )}
             </div>
             <div style={{ marginTop: 18 }}>
               <CardLabel>Raw SMS</CardLabel>
@@ -441,6 +475,98 @@ export function Income() {
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+// Same shape as the helpers on Transactions.tsx — duplicated rather
+// than promoted to a shared module because both pages compose them
+// inline against page-local state and the prop surface is small.
+
+function ExcludeToggleRow({
+  T,
+  excluded,
+  onToggle,
+}: {
+  T: InkTheme;
+  excluded: boolean;
+  onToggle: (next: boolean) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const handle = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onToggle(!excluded);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${T.line}` }}>
+      <span style={{ fontSize: 12, color: T.muted, fontFamily: T.sans }}>In analytics</span>
+      <button
+        type="button"
+        onClick={handle}
+        disabled={busy}
+        title={excluded ? "Include this credit in income totals" : "Exclude this credit from income totals"}
+        style={{
+          padding: "4px 10px",
+          borderRadius: 999,
+          border: `1px solid ${T.line}`,
+          background: excluded ? T.panelAlt : "transparent",
+          color: excluded ? T.dim : T.text,
+          fontSize: 11.5,
+          fontWeight: 600,
+          fontFamily: T.sans,
+          cursor: busy ? "not-allowed" : "pointer",
+        }}
+      >
+        {excluded ? "Excluded · re-include" : "Included · exclude"}
+      </button>
+    </div>
+  );
+}
+
+function DeleteRow({
+  T,
+  onDelete,
+}: {
+  T: InkTheme;
+  onDelete: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const handle = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onDelete();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${T.line}` }}>
+      <span style={{ fontSize: 12, color: T.muted, fontFamily: T.sans }}>Permanent</span>
+      <button
+        type="button"
+        onClick={handle}
+        disabled={busy}
+        title="Remove this credit from InstantDB and tombstone it so SMS resyncs don't re-import it"
+        style={{
+          padding: "4px 10px",
+          borderRadius: 999,
+          border: `1px solid ${T.accent}55`,
+          background: "transparent",
+          color: T.accent,
+          fontSize: 11.5,
+          fontWeight: 600,
+          fontFamily: T.sans,
+          cursor: busy ? "not-allowed" : "pointer",
+        }}
+      >
+        {busy ? "Deleting…" : "Delete"}
+      </button>
     </div>
   );
 }

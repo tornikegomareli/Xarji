@@ -3,6 +3,7 @@ import { db, type Payment } from "../lib/instant";
 import { groupBy, getDateGroup } from "../lib/utils";
 import { formatLocalDay } from "../ink/format";
 import { useGelConverter } from "../lib/exchangeRates";
+import { isDemoMode } from "../dev/demoMode";
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval } from "date-fns";
 
 export function usePayments() {
@@ -48,6 +49,56 @@ export function useTransactionExclude() {
       await db.transact(db.tx.payments[id].update({ excludedFromAnalytics: excluded }));
     } else {
       await db.transact(db.tx.credits[id].update({ excludedFromAnalytics: excluded }));
+    }
+  };
+}
+
+/**
+ * Permanently delete a transaction. Goes through the bun service's
+ * /api/transactions/delete endpoint so the service can record a
+ * tombstone in ~/.xarji/state.db — without that, the next SMS sync
+ * would re-import the row because dedup is keyed on the SMS-derived
+ * transactionId which would then be missing from InstantDB.
+ *
+ * Demo mode skips the service round-trip and writes directly to the
+ * in-memory demo store; demo data resets on reload anyway.
+ *
+ * If the service rejects (5xx, network error), falls back to a
+ * client-only delete so the user-visible action still happens — but
+ * logs a warning since the SMS will re-import on next sync.
+ */
+export function useTransactionDelete() {
+  return async (
+    kind: "payment" | "credit",
+    instantId: string,
+    transactionId: string
+  ): Promise<void> => {
+    if (isDemoMode()) {
+      const collection = kind === "payment" ? db.tx.payments : db.tx.credits;
+      await db.transact(collection[instantId].delete());
+      return;
+    }
+    try {
+      const res = await fetch("/api/transactions/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transactionId, instantId, kind }),
+      });
+      if (!res.ok) {
+        console.warn(
+          "[delete] service rejected, falling back to client-only delete",
+          res.status
+        );
+        const collection = kind === "payment" ? db.tx.payments : db.tx.credits;
+        await db.transact(collection[instantId].delete());
+      }
+    } catch (err) {
+      console.warn(
+        "[delete] service unreachable, falling back to client-only delete",
+        err
+      );
+      const collection = kind === "payment" ? db.tx.payments : db.tx.credits;
+      await db.transact(collection[instantId].delete());
     }
   };
 }

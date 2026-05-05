@@ -174,3 +174,77 @@ This pins the Codex MEDIUM fix from PR #23 (`fdfffee`).
 **Expected**
 - Day total in the right of the day-group header sums only the `kind === "payment"` rows that have a `gelAmount` resolved.
 - If a day has only declines, the right side shows `—`, not `−₾0`.
+
+---
+
+## T-TX-13 — Delete transaction confirm dialog
+
+**Steps**
+1. Click any payment row to open the detail panel.
+2. Scroll to the bottom of the detail card; find the `Permanent` row with a `Delete` button (coral outline).
+3. Click `Delete`.
+4. The browser's `window.confirm` dialog appears.
+
+**Expected**
+- The dialog text includes the merchant name, the formatted amount with currency symbol, and the date.
+- The dialog warns "It will be removed from InstantDB and tombstoned so the next SMS sync won't re-import it. This cannot be undone."
+
+---
+
+## T-TX-14 — Delete cancel keeps the row
+
+**Steps**
+1. Open detail panel, click `Delete`, then click `Cancel` in the confirm dialog.
+
+**Expected**
+- The row stays in the ledger.
+- The detail panel stays open with the same row selected.
+- No request to `/api/transactions/delete` should fire (check Network tab).
+
+---
+
+## T-TX-15 — Delete accept removes row + closes panel
+
+**Steps**
+1. Open detail panel, click `Delete`, click `OK` in the confirm dialog.
+
+**Expected**
+- The detail panel closes (`selectedId` resets).
+- The row vanishes from the ledger immediately.
+- The day-group total recomputes without that row's contribution.
+- A `POST /api/transactions/delete` request fires (in real-data mode; demo mode goes straight to the in-memory store).
+
+---
+
+## T-TX-16 — Deleted row stays gone after page reload
+
+**Steps**
+1. Delete a row via T-TX-15.
+2. Hit browser refresh.
+
+**Expected**
+- The row does NOT reappear.
+- This proves the InstantDB delete persisted.
+
+---
+
+## T-TX-17 — Deleted row stays gone after service sync (real data only)
+
+**Steps**
+1. Delete a real-data payment via T-TX-15.
+2. Open `/manage`, click `Sync now`.
+
+**Expected**
+- The row does NOT reappear after sync completes.
+- This proves the state.db tombstone is being honored — without the tombstone, the dedup logic (keyed on transactionId) would re-import the row because its transactionId is no longer in InstantDB.
+
+---
+
+## T-TX-18 — Failed-payment rows do not show a Delete button
+
+**Steps**
+1. Filter to `Kind: failed` and click a failed payment.
+
+**Expected**
+- The detail panel renders without a `Permanent` row / `Delete` button.
+- Failed payments don't carry a `transactionId` field consumers would need for the tombstone, and a re-imported failed-payment SMS would still be useful diagnostic info anyway.

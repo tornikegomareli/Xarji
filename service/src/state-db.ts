@@ -66,6 +66,13 @@ export interface SyncState {
   lastSyncAt: Date;
 }
 
+/**
+ * The kinds of InstantDB collections a tombstone can apply to.
+ * Mirrors `routeTransactions`'s output buckets so we can recover the
+ * source collection if we ever need to re-import a tombstoned row.
+ */
+export type TombstoneKind = "payment" | "credit" | "failedPayment";
+
 export class StateDb {
   private db: Database;
 
@@ -105,7 +112,58 @@ export class StateDb {
 
       CREATE INDEX IF NOT EXISTS idx_transactions_message_id
         ON processed_transactions(message_id);
+
+      -- User-deleted transactions. The dedup hot-path in instant-sync.ts
+      -- merges these IDs into its existing-IDs Set so a re-encountered
+      -- SMS skips through the same dedup path as already-synced rows.
+      -- Stays-deleted across service restarts, since this table is on
+      -- disk in ~/.xarji/state.db (not in InstantDB).
+      CREATE TABLE IF NOT EXISTS deleted_transactions (
+        transaction_id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        deleted_at TEXT NOT NULL
+      );
     `);
+  }
+
+  /**
+   * Record a user-initiated tombstone. Subsequent syncs see the
+   * `transactionId` in the dedup Set via `loadDeletedTransactionIds`
+   * and skip re-importing the SMS even though the InstantDB row is
+   * gone. INSERT OR REPLACE so a double-delete is idempotent.
+   */
+  markTransactionDeleted(transactionId: string, kind: TombstoneKind): void {
+    this.db
+      .query(
+        `
+        INSERT INTO deleted_transactions (transaction_id, kind, deleted_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(transaction_id) DO UPDATE SET
+          kind = excluded.kind,
+          deleted_at = excluded.deleted_at
+      `
+      )
+      .run(transactionId, kind, new Date().toISOString());
+  }
+
+  /** True if the user previously deleted this transaction. */
+  isTransactionDeleted(transactionId: string): boolean {
+    const row = this.db
+      .query("SELECT 1 FROM deleted_transactions WHERE transaction_id = ?")
+      .get(transactionId);
+    return row !== null;
+  }
+
+  /**
+   * Bulk read for the dedup hot path. Returns a Set so the syncer can
+   * union it with the existing transactionIds in O(n+m) and call the
+   * existing applyDedup unmodified.
+   */
+  loadDeletedTransactionIds(): Set<string> {
+    const rows = this.db
+      .query("SELECT transaction_id FROM deleted_transactions")
+      .all() as Array<{ transaction_id: string }>;
+    return new Set(rows.map((r) => r.transaction_id));
   }
 
   /**
