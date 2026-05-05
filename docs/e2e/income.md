@@ -22,7 +22,7 @@ Open `http://localhost:5173/income`. Default range: **Month**.
 **Expected**
 - Eyebrow: "Money in · <range.label>".
 - Title: "Income".
-- Range buttons visible top-right with **Month** highlighted.
+- Range buttons visible top-right (**Today / Week / Month / Year / Custom / Cycle**) with **Month** highlighted.
 - Hero card shows `+₾<total>` for incoming GEL credits in the active range, plus a `<count> incoming transactions · <month>` subline.
 - 9-month income trend AreaChart below the hero (when `T.chartsVisible` and at least one month had income).
 
@@ -31,7 +31,7 @@ Open `http://localhost:5173/income`. Default range: **Month**.
 ## T-INC-02 — Range buttons re-scope hero + ledger
 
 **Steps**
-1. Click **Today / Week / Year / Custom**.
+1. Click **Today / Week / Year / Custom / Cycle** in turn.
 
 **Expected**
 - Hero `+₾<total>` and incoming-transaction count update.
