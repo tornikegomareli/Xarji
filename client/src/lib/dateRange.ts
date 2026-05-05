@@ -34,6 +34,15 @@ export interface DateRange {
   /** Which named range this came from. "Custom" means the user picked a
    *  bespoke window via the date inputs. */
   key: RangeKey;
+  /** Original cycle anchor day, preserved across previousRange/nextRange
+   *  transformations so end-of-month clamping (e.g. day 31 in Feb)
+   *  doesn't lose the user's intended cycle day when we walk back to a
+   *  prior period. Only set on Cycle ranges. */
+  cycleDay?: number;
+}
+
+function lastDayOfMonth(year: number, monthZeroIndexed: number): number {
+  return new Date(year, monthZeroIndexed + 1, 0).getDate();
 }
 
 export interface CustomRange {
@@ -45,20 +54,60 @@ export interface CustomRange {
 
 /** Compute a pay-cycle DateRange for a given cycle-start day and offset.
  *  offset=0 → the cycle whose start day most recently passed (current);
- *  offset=-1 → the one before that; offset=+1 → the upcoming one. */
+ *  offset=-1 → the one before that; offset=+1 → the upcoming one.
+ *
+ *  All start/end Dates are clamped to the actual last day of their target
+ *  month so cycleDay=29..31 doesn't overflow into the following month
+ *  (e.g. day 31 in Feb would otherwise produce a March start date). The
+ *  user's chosen cycleDay is preserved on the returned DateRange so
+ *  previousRange can walk back without losing the original anchor.
+ */
 export function rangeFromCycle(cycleDay: number, offset: number, now: Date): DateRange {
   const day = Math.max(1, Math.min(31, Math.round(cycleDay)));
-  // Determine the base month: the most recent month where day ≤ today.
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), day);
+
+  // Determine the base month: the most recent month where the (clamped)
+  // cycle anchor has already passed. Clamp `day` against the current
+  // month's last day so e.g. now=Feb 5 + day=31 still resolves correctly
+  // (it'd otherwise treat "Feb 31" as overflowed Mar 3 and pick the wrong
+  // base month). (Codex P2 on PR #44.)
+  const nowMonthLast = lastDayOfMonth(now.getFullYear(), now.getMonth());
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), Math.min(day, nowMonthLast));
   const baseMonth = thisMonthStart > now ? now.getMonth() - 1 : now.getMonth();
-  // JS Date constructor handles month underflow/overflow automatically.
-  const startDate = new Date(now.getFullYear(), baseMonth + offset, day);
-  const endDate = endOfDay(new Date(startDate.getFullYear(), startDate.getMonth() + 1, day - 1));
+
+  // Anchor month-of-start via Date(yr, mo, 1) so Date normalises any
+  // negative or 12+ month value into a valid (year, month) pair.
+  const startAnchor = new Date(now.getFullYear(), baseMonth + offset, 1);
+  const startMonthLast = lastDayOfMonth(
+    startAnchor.getFullYear(),
+    startAnchor.getMonth()
+  );
+  const startDate = new Date(
+    startAnchor.getFullYear(),
+    startAnchor.getMonth(),
+    Math.min(day, startMonthLast)
+  );
+
+  // End is "day-1 of the next calendar month". day=1 → day=0, which JS
+  // Date interprets as "last day of the previous (= start) month" so a
+  // day=1 cycle is one calendar month exactly. For day=2..31 we clamp
+  // day-1 to the end month's last day so day=31 ending in Feb→Apr also
+  // doesn't overflow.
+  const endAnchor = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1);
+  const endMonthLast = lastDayOfMonth(
+    endAnchor.getFullYear(),
+    endAnchor.getMonth()
+  );
+  const endDay = day === 1 ? 0 : Math.min(day - 1, endMonthLast);
+  const endDate = endOfDay(
+    new Date(endAnchor.getFullYear(), endAnchor.getMonth(), endDay)
+  );
+
   return {
     start: startOfDay(startDate),
     end: endDate,
     label: `${format(startDate, "MMM d")} – ${format(endDate, "MMM d, yyyy")}`,
     key: "Cycle",
+    cycleDay: day,
   };
 }
 
@@ -170,8 +219,21 @@ export function previousRange(range: DateRange): DateRange {
       return { start: startOfMonth(prevStart), end: endOfMonth(prevStart), label: format(prevStart, "MMMM yyyy"), key: "Month" };
     case "Year":
       return { start: startOfYear(prevStart), end: endOfYear(prevStart), label: format(prevStart, "yyyy"), key: "Year" };
-    case "Cycle":
-      return { start: prevStart, end: prevEnd, label: `${format(prevStart, "MMM d")} – ${format(prevEnd, "MMM d, yyyy")}`, key: "Cycle" };
+    case "Cycle": {
+      // Pay cycles are calendar-anchored, not millisecond-spans. Walking
+      // back by `(end - start)` ms (the generic shift above) lands one
+      // day off whenever the prior cycle has a different length than
+      // the current one — e.g. Apr 25–May 24 (30 days) shifted back by
+      // 30 days gives Mar 26–Apr 24 instead of the documented
+      // Mar 25–Apr 24. Recompute via rangeFromCycle anchored to the day
+      // before the active cycle's start so the "most recent past day-N"
+      // logic resolves into the prior calendar month, preserving the
+      // original cycleDay through end-of-month clamping.
+      // (Codex P2 on PR #44.)
+      const cycleDay = range.cycleDay ?? range.start.getDate();
+      const refDate = new Date(range.start.getTime() - 86400000);
+      return rangeFromCycle(cycleDay, 0, refDate);
+    }
     case "Custom":
     default:
       return { start: prevStart, end: prevEnd, label: `${format(prevStart, "MMM d")} – ${format(prevEnd, "MMM d, yyyy")}`, key: "Custom" };
