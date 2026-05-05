@@ -8,7 +8,7 @@ import {
   useCategoryMedianSpend,
 } from "../hooks/useBudgets";
 import { BUCKETS, BUCKET_DESCRIPTIONS, BUCKET_LABELS, type Bucket, planMonthKey } from "../lib/budgets";
-import { useCategories } from "../hooks/useCategories";
+import { useMergedCategories } from "../hooks/useCategories";
 import type { Category } from "../lib/instant";
 import { format } from "date-fns";
 
@@ -144,7 +144,14 @@ export function Budgets() {
 
 function SetupWizard({ onClassify }: { onClassify: (catId: string, b: Bucket) => Promise<void> }) {
   const T = useTheme();
-  const { categories } = useCategories();
+  // Use merged categories so a fresh account (no DB-persisted rows) still
+  // sees the 11 built-in defaults to classify here. The rest of the page
+  // already routes through useMergedCategories for the same reason; the
+  // wizard was the only branch that still gated on raw DB rows, so an
+  // empty-DB user fell into "No categories yet" even though
+  // useBudgetSummary was correctly returning the merged defaults as
+  // unclassified rows. (Codex P2 on PR #45.)
+  const categories = useMergedCategories();
   const seedable = categories.length > 0;
 
   if (!seedable) {
