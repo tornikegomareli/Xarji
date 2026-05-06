@@ -1,22 +1,31 @@
 /**
  * TBC Bank — real sender id "TBC SMS" (not "TBC").
  *
- * All patterns match Georgian Unicode directly. TBC sends SMS in Georgian
- * script (U+10D0–U+10FF); comments show the human-readable transliteration
- * beside each Unicode-escaped literal for readability.
+ * Each detection regex matches BOTH Georgian script (U+10D0–U+10FF) AND the
+ * Latin transliteration TBC actually sends in production. Real-world SMS
+ * dumped from chat.db on 2026-05-05 had headers like "Charicxva:",
+ * "Gadaricxva:", "Ukugatareba:", "Mobiluris shevseba:", and balances like
+ * "Nashti:" — so the parser missed every keyworded transaction (incoming
+ * credits, outgoing transfers, mobile top-ups, reversals, ATM withdrawals)
+ * and only got card payments right (those don't depend on a header keyword,
+ * just on a bare amount-currency line + card-parens marker). Card payments
+ * lulled the test suite into thinking the parser worked.
  *
  * Handles:
- *   ჩარიცხვა:          incoming transfer     → transfer_in   (in)
- *   გადარიცხვა:        outgoing transfer     → transfer_out  (out)
- *   სესხის დაფარვა:    loan repayment        → loan_repayment (out)
- *   საბარათე ოპერაცია … უარყოფილია           → payment_failed (out)
- *   უკუგატარება:       card reversal         → reversal       (in)
- *   NNN CUR + card line + merchant           → payment        (out)
- *   გადახდა:           bill / utility pay    → transfer_out  (out)
- *   მობილურის შევსება: mobile top-up         → transfer_out  (out)
- *   ავტომატური გადარიცხვა: scheduled auto    → transfer_out  (out)
- *   ნაღდი ფულის შეტანა: cash deposit         → deposit        (in)
- *   თანხის განაღდება:  ATM cash withdrawal   → atm_withdrawal (out)
+ *   ჩარიცხვა / Charicxva:                    incoming transfer  → transfer_in   (in)
+ *   გადარიცხვა / Gadaricxva:                 outgoing transfer  → transfer_out  (out)
+ *   სესხის დაფარვა / Sesxis dapharva:        loan repayment     → loan_repayment (out)
+ *   საბარათე ოპერაცია … უარყოფილია /
+ *     Sabarate operacia … uarYofiliA         failed card pay    → payment_failed (out)
+ *   უკუგატარება / Ukugatareba:               card reversal      → reversal       (in)
+ *   NNN CUR + card line + merchant           card payment       → payment        (out)
+ *   გადახდა / Gadaxda:                       bill / utility     → transfer_out   (out)
+ *   მობილურის შევსება / Mobiluris shevseba:  mobile top-up      → transfer_out   (out)
+ *   ავტომატური გადარიცხვა /
+ *     Avtomaturi gadaricxva                  scheduled auto     → transfer_out   (out)
+ *   ნაღდი ფულის შეტანა /
+ *     Naghdi pulis shetana:                  cash deposit       → deposit        (in)
+ *   თანხის განაღდება / Tanxis ganagdeba:     ATM cash withdraw  → atm_withdrawal (out)
  *
  * Marketing / OTP / security / investment notifications return null.
  */
@@ -35,67 +44,53 @@ import {
 const BANK_KEY = "TBC";
 
 // ── Self-transfer guard ────────────────────────────────────────────────────
-// საკუთარ ანგარიშზე (own-account transfer) — skip entirely.
-// U+10E1 U+10D0 U+10D9 U+10E3 U+10D7 U+10D0 U+10E0 = საKuTAr
-// U+10D0 U+10DC U+10D2 U+10D0 U+10E0 U+10D8 U+10E8 U+10D4 U+10D1 U+10D6 U+10D4 = ANGaRiShebZe
-const RE_SELF = /საკუთარ ანგარიშებზე/;
+// საკუთარ ანგარიშებზე / Sakutar angarishebze — skip entirely.
+const RE_SELF = /(?:საკუთარ ანგარიშებზე|[Ss]akutar angarishebze)/;
 
-// ── Incoming transfer (ჩარიცხვა: NNN CUR) ─────────────────────────────────
-// U+10E9 U+10D0 U+10E0 U+10D8 U+10EA U+10EE U+10D5 U+10D0 = ჩARicxVa
-const RE_INCOMING = /ჩარიცხვა:\s*([\d.,]+)\s*([A-Z]{3})/;
+// ── Incoming transfer (ჩარიცხვა / Charicxva: NNN CUR) ─────────────────────
+const RE_INCOMING = /(?:ჩარიცხვა|[Cc]haricxva):\s*([\d.,]+)\s*([A-Z]{3})/;
 
-// ── Outgoing transfer (გადარიცხვა:\nNNN CUR) ──────────────────────────────
-// U+10D2 U+10D0 U+10D3 U+10D0 U+10E0 U+10D8 U+10EA U+10EE U+10D5 U+10D0 = გადარიცხვა
-const RE_TRANSFER_OUT = /გადარიცხვა:\s*([\d.,]+)\s*([A-Z]{3})/;
+// ── Outgoing transfer (გადარიცხვა / Gadaricxva: NNN CUR) ──────────────────
+const RE_TRANSFER_OUT = /(?:გადარიცხვა|[Gg]adaricxva):\s*([\d.,]+)\s*([A-Z]{3})/;
 
-// ── Loan full repayment (სESxis dAFARVa: NNN CUR) ─────────────────────────
-// U+10E1 U+10D4 U+10E1 U+10EE U+10D8 U+10E1 = სESxis
-// U+10D3 U+10D0 U+10E4 U+10D0 U+10E0 U+10D5 U+10D0 = dAFARVa
-const RE_LOAN = /სესხის დაფარვა:\s*([\d.,]+)\s*([A-Z]{3})/;
+// ── Loan full repayment (სესხის დაფარვა / Sesxis dapharva: NNN CUR) ───────
+const RE_LOAN = /(?:სესხის დაფარვა|[Ss]esxis dapharva):\s*([\d.,]+)\s*([A-Z]{3})/;
 
-// ── Failed card payment (sabarate operacia NNN CUR uarYofiliA) ────────────
-// U+10E1 U+10D0 U+10D1 U+10D0 U+10E0 U+10D0 U+10D7 U+10D4 = sabarate
-// U+10DD U+10DE U+10D4 U+10E0 U+10D0 U+10EA U+10D8 U+10D0 = operacia
-// U+10E3 U+10D0 U+10E0 U+10E7 U+10DD U+10E4 U+10D8 U+10DA U+10D8 U+10D0 = uarYofiliA
-const RE_FAILED = /საბარათე ოპერაცია\s*([\d.,]+)\s*([A-Z]{3})\s*უარყოფილია/i;
+// ── Failed card payment (საბარათე ოპერაცია … უარყოფილია /
+//                        Sabarate operacia … uarYofiliA) ────────────────────
+const RE_FAILED = /(?:საბარათე ოპერაცია|[Ss]abarate operacia)\s*([\d.,]+)\s*([A-Z]{3})\s*(?:უარყოფილია|uar[Yy]ofili[Aa])/i;
 
-// ── Card reversal (uKUGatareba:\nNNN CUR\nCARD\nmerchant) ─────────────────
-// U+10E3 U+10D9 U+10E3 U+10D2 U+10D0 U+10E2 U+10D0 U+10E0 U+10D4 U+10D1 U+10D0 = uKUGatareba
-const RE_REVERSAL = /უკუგატარება:/;
+// ── Card reversal (უკუგატარება / Ukugatareba: …) ──────────────────────────
+const RE_REVERSAL = /(?:უკუგატარება|[Uu]kugatareba):/;
 
-// Inline shape — same SMS but everything on one line. Seen in the wild as e.g.
-// "უკუგატარება: 13.90 GEL TBC Concept 360 VISA Signature (***8058) BOLTTAXI 05/05/2026 17:25:01 ნაშთი: 400.00 GEL"
+// Inline shape — same SMS but everything on one line. Real example:
+// "Ukugatareba: 13.90 GEL TBC Concept 360 VISA Signature (***8058) BOLTTAXI
+//  05/05/2026 17:25:01 nashti: 400.00 GEL"
 // Captures the amount + currency right after the header so detect() can fire
 // without needing the line-anchored RE_CARD_AMOUNT to also match.
-const RE_REVERSAL_INLINE = /უკუგატარება:\s*([\d.,]+)\s*([A-Z]{3})/;
+const RE_REVERSAL_INLINE = /(?:უკუგატარება|[Uu]kugatareba):\s*([\d.,]+)\s*([A-Z]{3})/;
 
-// ── Bill / utility payment (გAdaXda:\nNNN CUR\nMERCHANT) ──────────────────
-// U+10D2 U+10D0 U+10D3 U+10D0 U+10EE U+10D3 U+10D0 = გAdaXda (note: ხ ≠ რ in გAdaRicxVa)
-const RE_BILL = /გადახდა:\s*([\d.,]+)\s*([A-Z]{3})/;
+// ── Bill / utility payment (გადახდა / Gadakhda: NNN CUR) ──────────────────
+// Latin form varies in the wild: "Gadakhda" and "Gadaxda" both seen. Allow
+// both spellings via an optional "k". Distinct from "Gadaricxva" — the
+// preceding word boundary stops "Gadaricxva" from matching here by accident.
+const RE_BILL = /(?:გადახდა|[Gg]ada(?:kh|x)da):\s*([\d.,]+)\s*([A-Z]{3})/;
 
-// ── Mobile top-up (მobIlURIs ShEvSeba:\nNNN CUR\nMERCHANT) ───────────────
-// U+10DB U+10DD U+10D1 U+10D8 U+10DA U+10E3 U+10E0 U+10D8 U+10E1 = მobIlURIs
-// U+10E8 U+10D4 U+10D5 U+10E1 U+10D4 U+10D1 U+10D0 = ShEvSeba
-const RE_MOBILE = /მობილურის შევსება:\s*([\d.,]+)\s*([A-Z]{3})/;
+// ── Mobile top-up (მობილურის შევსება / Mobiluris shevseba: …) ─────────────
+const RE_MOBILE = /(?:მობილურის შევსება|[Mm]obiluris shevseba):\s*([\d.,]+)\s*([A-Z]{3})/;
 
-// ── Scheduled auto-transfer (AvtomATUri GAdaRicXVa\nNNN CUR\nMERCHANT) ───
-// U+10D0 U+10D5 U+10E2 U+10DD U+10DB U+10D0 U+10E2 U+10E3 U+10E0 U+10D8 = AvtomATUri
-const RE_AUTO = /ავტომატური გადარიცხვა\s*([\d.,]+)\s*([A-Z]{3})/;
+// ── Scheduled auto-transfer (ავტომატური გადარიცხვა /
+//                             Avtomaturi gadaricxva) ──────────────────────
+const RE_AUTO = /(?:ავტომატური გადარიცხვა|[Aa]vtomaturi gadaricxva)\s*([\d.,]+)\s*([A-Z]{3})/;
 
-// ── Cash deposit (naGDI fulis SheTaNa:\nTaNXa: NNN CUR) ───────────────────
-// U+10DC U+10D0 U+10E6 U+10D3 U+10D8 = naGDI
-// U+10E4 U+10E3 U+10DA U+10D8 U+10E1 = fulis
-// U+10E8 U+10D4 U+10E2 U+10D0 U+10DC U+10D0 = SheTaNa
-const RE_DEPOSIT = /ნაღდი ფულის შეტანა:/;
+// ── Cash deposit (ნაღდი ფულის შეტანა / Naghdi pulis shetana:) ─────────────
+const RE_DEPOSIT = /(?:ნაღდი ფულის შეტანა|[Nn]aghdi pulis shetana):/;
 
-// ── ATM cash withdrawal (TaNXIs GaNaGdeba:\nDATE\nTaNXa: NNN CUR) ─────────
-// U+10D7 U+10D0 U+10DC U+10EE U+10D8 U+10E1 = TaNXIs
-// U+10D2 U+10D0 U+10DC U+10D0 U+10E6 U+10D3 U+10D4 U+10D1 U+10D0 = GaNaGdeba
-const RE_ATM = /თანხის განაღდება:/;
+// ── ATM cash withdrawal (თანხის განაღდება / Tanxis ganagdeba:) ────────────
+const RE_ATM = /(?:თანხის განაღდება|[Tt]anxis ganagdeba):/;
 
-// ── Amount label used in deposit/ATM/auto (TaNXa: NNN CUR) ────────────────
-// U+10D7 U+10D0 U+10DC U+10EE U+10D0 = TaNXa
-const RE_TANXA = /თანხა:\s*([\d.,]+)\s*([A-Z]{3})/;
+// ── Amount label used in deposit/ATM/auto (თანხა / Tanxa: NNN CUR) ────────
+const RE_TANXA = /(?:თანხა|[Tt]anxa):\s*([\d.,]+)\s*([A-Z]{3})/;
 
 // ── Generic card-payment amount: bare "NNN.NN CUR" line ───────────────────
 // Optional leading ")" covers TBC municipal transport taps.
@@ -105,20 +100,19 @@ const RE_CARD_AMOUNT = /^\s*\)?\s*([\d.,]+)\s*([A-Z]{3})\s*$/m;
 const RE_CARD_PARENS = /\(\s*\*{3,}'?(\d{3,4})'?\s*\)/;
 const RE_CARD_STARS  = /\*{3,}(\d{3,4})/;
 
-// ── Balance (ნAshTi: NNN CUR) ──────────────────────────────────────────────
-// U+10DC U+10D0 U+10E8 U+10D7 U+10D8 = ნAshTi
-const RE_BALANCE = /ნაშთი:\s*([\d.,]+)\s*([A-Z]{3})/;
+// ── Balance (ნაშთი / Nashti: NNN CUR) ─────────────────────────────────────
+// Real-world TBC SMS varies the casing — "Nashti:" on most card-payment SMS
+// but "nashti:" lowercase on some inline reversals. The [Nn] handles both.
+const RE_BALANCE = /(?:ნაშთი|[Nn]ashti):\s*([\d.,]+)\s*([A-Z]{3})/;
 
-// ── Failure reason (მiZeZi: text) ─────────────────────────────────────────
-// U+10DB U+10D8 U+10D6 U+10D4 U+10D6 U+10D8 = მiZeZi
-const RE_REASON = /მიზეზი:\s*(.+)/i;
+// ── Failure reason (მიზეზი / Mizezi: text) ───────────────────────────────
+const RE_REASON = /(?:მიზეზი|[Mm]izezi):\s*(.+)/i;
 
-// ── Loan source account (ANGaRiShIdaN: accountName) ────────────────────────
-// U+10D0 U+10DC U+10D2 U+10D0 U+10E0 U+10D8 U+10E8 U+10D8 U+10D3 U+10D0 U+10DC = ANGaRiShIdaN
-const RE_SOURCE_ACCOUNT = /ანგარიშიდან:\s*(.+?)(?:\s*$)/im;
+// ── Loan source account (ანგარიშიდან / Angarishidan: accountName) ─────────
+const RE_SOURCE_ACCOUNT = /(?:ანგარიშიდან|[Aa]ngarishidan):\s*(.+?)(?:\s*$)/im;
 
-// ── Loan remaining balance (სESxis ნAshTi: NNN CUR) ───────────────────────
-const RE_LOAN_REMAINING = /სესხის ნაშთი:\s*([\d.,]+)\s*([A-Z]{3})/;
+// ── Loan remaining balance (სესხის ნაშთი / Sesxis nashti: NNN CUR) ────────
+const RE_LOAN_REMAINING = /(?:სესხის ნაშთი|[Ss]esxis nashti):\s*([\d.,]+)\s*([A-Z]{3})/;
 
 // ── Account hint lines that are NOT counterparty names ────────────────────
 const RE_ACCOUNT_HINT = /^\s*(Current|Space Card|Expired deposits account|VISA GOLD|[A-Z][A-Za-z ]+ account)\s*$/;
