@@ -26,9 +26,13 @@ export interface Categorizer {
   /** Returns the full InkCategory record with name + color + icon.
    *  Pass paymentId to honour per-transaction overrides (higher priority). */
   getCategory: (merchant: string | null | undefined, raw?: string | null, paymentId?: string | null) => InkCategory;
-  /** Convenience for places that historically called `autoCategorize`
-   *  to get the human-facing category name (e.g. "Groceries"). */
-  categorizeName: (merchant: string | null | undefined) => string;
+  /** Convenience for places that need the human-facing category name
+   *  (e.g. "Groceries") instead of the id. Pass paymentId to honour
+   *  per-transaction overrides; without it only the per-merchant
+   *  override + regex fallback are applied. Analytics aggregators that
+   *  iterate payments with a known id should always pass it so the
+   *  user's per-tx classification flows through to totals/donut/etc. */
+  categorizeName: (merchant: string | null | undefined, paymentId?: string | null) => string;
   /** Merged list of DEFAULT_CATEGORIES + DB-backed categories (DB wins
    *  on id collision so a renamed default uses the user's name).
    *  Use this anywhere you'd previously have hardcoded `DEFAULT_CATEGORIES`
@@ -148,7 +152,8 @@ export function useCategorizer(): Categorizer {
   );
 
   const categorizeName = useCallback(
-    (merchant: string | null | undefined): string => getCategory(merchant).name,
+    (merchant: string | null | undefined, paymentId?: string | null): string =>
+      getCategory(merchant, undefined, paymentId).name,
     [getCategory]
   );
 

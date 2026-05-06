@@ -127,9 +127,10 @@ export function useCategoryAnalytics() {
 
     // Categorize payments — uses the override-aware categoriser so a
     // user's manual "Spotify → Subscriptions" override propagates here
-    // even though the regex default puts it under "Other".
+    // even though the regex default puts it under "Other". Pass
+    // payment.id so per-transaction overrides also flow through.
     for (const payment of payments) {
-      const categoryName = categorizeName(payment.merchant ?? null);
+      const categoryName = categorizeName(payment.merchant ?? null, payment.id);
       if (categoryTotals[categoryName]) {
         categoryTotals[categoryName].total += payment.amount;
         categoryTotals[categoryName].count += 1;

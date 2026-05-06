@@ -186,7 +186,12 @@ export function useRangeCategoryAnalytics(range: DateRange) {
       if (payment.excludedFromAnalytics) continue;
       if (!isInRange(payment.transactionDate, range)) continue;
       if (payment.gelAmount === null) continue;
-      const categoryName = categorizeName(payment.merchant ?? null);
+      // Pass payment.id so per-transaction overrides flow through to
+      // the donut + per-category totals; without it the hook only sees
+      // per-merchant overrides and the regex default. Per-tx
+      // reclassifications via /transactions row-level CategoryPicker
+      // would silently miss this aggregator otherwise.
+      const categoryName = categorizeName(payment.merchant ?? null, payment.id);
       if (categoryTotals[categoryName]) {
         categoryTotals[categoryName].total += payment.gelAmount;
         categoryTotals[categoryName].count += 1;
