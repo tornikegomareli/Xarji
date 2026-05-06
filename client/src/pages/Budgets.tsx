@@ -11,12 +11,14 @@ import { BUCKETS, BUCKET_DESCRIPTIONS, BUCKET_LABELS, type Bucket, planMonthKey 
 import { useMergedCategories } from "../hooks/useCategories";
 import type { Category } from "../lib/instant";
 import { format } from "date-fns";
+import { useRangeState } from "../hooks/useRangeState";
 
 export function Budgets() {
   const T = useTheme();
-  const planMonth = planMonthKey();
+  const { range, props: rangeProps } = useRangeState("Month");
+  const planMonth = planMonthKey(range.start);
   const plan = useBudgetPlan(planMonth);
-  const summary = useBudgetSummary(planMonth);
+  const summary = useBudgetSummary(planMonth, range.start, range.end);
   const {
     setCategoryBucket,
     setCategoryTarget,
@@ -30,9 +32,13 @@ export function Budgets() {
   const flexRemaining = Math.max(0, plan.flexPool - summary.flexActual);
   const daysLeft = useMemo(() => {
     const now = new Date();
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    return Math.max(1, lastDay - now.getDate() + 1);
-  }, []);
+    const ms = range.end.getTime() - now.getTime();
+    return Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+  }, [range.end]);
+
+  const eyebrow = rangeProps.active === "Cycle" && rangeProps.cycleLabel
+    ? `Cycle: ${rangeProps.cycleLabel}`
+    : `Plan for ${format(range.start, "MMMM yyyy")}`;
 
   const showWizard = summary.byBucket.fixed.length === 0 &&
     summary.byBucket.flex.length === 0 &&
@@ -41,8 +47,16 @@ export function Budgets() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap, height: "100%" }}>
       <PageHeader
-        eyebrow={`Plan for ${format(new Date(), "MMMM yyyy")}`}
+        eyebrow={eyebrow}
         title="Flex Budgeting"
+        ranges={["Month", "Cycle"]}
+        active={rangeProps.active}
+        onRange={rangeProps.onRange}
+        cycleDay={rangeProps.cycleDay}
+        cycleLabel={rangeProps.cycleLabel}
+        onCycleDayChange={rangeProps.onCycleDayChange}
+        onCyclePrev={rangeProps.onCyclePrev}
+        onCycleNext={rangeProps.onCycleNext}
         rightSlot={
           <Pill bg={T.accentSoft} color={T.accent}>
             {summary.byBucket.unclassified.length} unclassified

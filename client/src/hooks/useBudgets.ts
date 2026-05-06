@@ -131,15 +131,22 @@ export function useBudgetPlan(planMonth = planMonthKey()) {
  * Months before the anchor are treated as 0-contribution; the user
  * hadn't started budgeting yet, so we don't retro-credit nor debit.
  */
-export function useBudgetSummary(planMonth = planMonthKey()) {
+export function useBudgetSummary(planMonth = planMonthKey(), rangeStart?: Date, rangeEnd?: Date) {
   const categories = useMergedCategories();
   const { payments } = useConvertedPayments();
   const { categorize } = useCategorizer();
   const { plans } = useBudgetPlans();
+  const rangeStartMs = rangeStart?.getTime();
+  const rangeEndMs = rangeEnd?.getTime();
 
   return useMemo(() => {
-    const monthStart = new Date(planMonthYear(planMonth), planMonthMonth(planMonth), 1).getTime();
-    const monthEnd = new Date(planMonthYear(planMonth), planMonthMonth(planMonth) + 1, 1).getTime();
+    const monthStart = rangeStartMs !== undefined
+      ? rangeStartMs
+      : new Date(planMonthYear(planMonth), planMonthMonth(planMonth), 1).getTime();
+    // +1ms so endOfDay (23:59:59.999) is included when using < comparison
+    const monthEnd = rangeEndMs !== undefined
+      ? rangeEndMs + 1
+      : new Date(planMonthYear(planMonth), planMonthMonth(planMonth) + 1, 1).getTime();
     const anchor = anchorMonthFromPlans(plans);
 
     // Bucket-by-categoryId for current month spend AND build the
@@ -221,7 +228,7 @@ export function useBudgetSummary(planMonth = planMonthKey()) {
       nonMonthlySinkingFund,
       anchor,
     };
-  }, [categories, payments, categorize, plans, planMonth]);
+  }, [categories, payments, categorize, plans, planMonth, rangeStartMs, rangeEndMs]);
 }
 
 /**
