@@ -45,10 +45,16 @@ export function useBudgetPlans() {
  * Returns 0 when the user has no qualifying credits in the window.
  * The page surfaces a "no income detected" affordance in that case
  * instead of silently showing a ₾0 flex pool.
+ *
+ * Returns `isLoading` alongside the value so callers can skeleton
+ * the auto-derived flex pool until credits arrive — without it the
+ * page can flash a temporary ₾0 income before the credits query
+ * resolves, even when payments/categories/plans are already loaded.
+ * (Codex P2 on PR #47.)
  */
-export function useExpectedIncomeDefault(now = new Date()): number {
-  const { credits } = useConvertedCredits();
-  return useMemo(() => {
+export function useExpectedIncomeDefault(now = new Date()): { value: number; isLoading: boolean } {
+  const { credits, isLoading } = useConvertedCredits();
+  const value = useMemo(() => {
     const cutoff = new Date(now.getFullYear(), now.getMonth() - 3, 1).getTime();
     const monthEnd = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     const monthly = new Map<string, number>();
@@ -64,6 +70,7 @@ export function useExpectedIncomeDefault(now = new Date()): number {
     const totals = Array.from(monthly.values());
     return totals.reduce((s, x) => s + x, 0) / totals.length;
   }, [credits, now]);
+  return { value, isLoading };
 }
 
 /**
@@ -79,9 +86,16 @@ export function useExpectedIncomeDefault(now = new Date()): number {
  * hasn't visited.
  */
 export function useBudgetPlan(planMonth = planMonthKey()) {
-  const { plans, isLoading, error } = useBudgetPlans();
-  const expectedIncomeAuto = useExpectedIncomeDefault();
+  const { plans, isLoading: plansLoading, error } = useBudgetPlans();
+  const { value: expectedIncomeAuto, isLoading: incomeLoading } = useExpectedIncomeDefault();
   const categories = useMergedCategories();
+  // Page renders the headline + flex pool against expectedIncomeAuto
+  // unless the user has explicitly overridden it. While credits are
+  // still loading, the auto value is 0 and the headline would briefly
+  // show "Flex remaining: ₾0 of ₾0 pool (auto)" before snapping to
+  // the right number. Bubble the loading flag up so the page can
+  // skeleton through that gap. (Codex P2 on PR #47.)
+  const isLoading = plansLoading || incomeLoading;
 
   return useMemo(() => {
     const stored = plans.find((p) => p.planMonth === planMonth) ?? null;

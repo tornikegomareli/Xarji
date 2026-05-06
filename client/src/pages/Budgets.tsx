@@ -30,11 +30,18 @@ export function Budgets() {
 
   const flexUsedPct = plan.flexPool > 0 ? Math.min(100, (summary.flexActual / plan.flexPool) * 100) : 0;
   const flexRemaining = Math.max(0, plan.flexPool - summary.flexActual);
-  const daysLeft = useMemo(() => {
+  // The "/day for the next N days" copy only makes sense for the
+  // cycle the user is currently inside — for past cycles `range.end`
+  // is in the past so the math used to clamp to 1 day, and for future
+  // cycles it included days before the cycle even starts. Compute
+  // null for those cases and let the JSX hide the line. (Codex P2 on
+  // PR #47.)
+  const daysLeft = useMemo<number | null>(() => {
     const now = new Date();
+    if (now < range.start || now > range.end) return null;
     const ms = range.end.getTime() - now.getTime();
     return Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
-  }, [range.end]);
+  }, [range.start, range.end]);
 
   const eyebrow = rangeProps.active === "Cycle" && rangeProps.cycleLabel
     ? `Cycle: ${rangeProps.cycleLabel}`
@@ -97,8 +104,13 @@ export function Budgets() {
               </span>
             </div>
             <div style={{ fontSize: 12.5, color: T.muted, fontFamily: T.sans }}>
-              ₾{Math.round(flexRemaining / daysLeft).toLocaleString("en-US")}/day for the next {daysLeft} day
-              {daysLeft === 1 ? "" : "s"} · ₾{Math.round(plan.flexPool).toLocaleString("en-US")} pool
+              {daysLeft != null && (
+                <>
+                  ₾{Math.round(flexRemaining / daysLeft).toLocaleString("en-US")}/day for the next {daysLeft} day
+                  {daysLeft === 1 ? "" : "s"} ·{" "}
+                </>
+              )}
+              ₾{Math.round(plan.flexPool).toLocaleString("en-US")} pool
               {plan.flexPoolIsAuto ? " (auto)" : " (manual)"}
             </div>
             {/* Flex usage bar */}
