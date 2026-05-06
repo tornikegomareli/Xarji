@@ -243,13 +243,16 @@ export function useBudgetMutations() {
   const setCategoryBucket = useCallback(async (categoryId: string, bucket: Bucket | null) => {
     // If this id belongs to a DEFAULT_CATEGORY that hasn't been written
     // to DB yet, seed a full row first so name/color/icon aren't lost
-    // when only `bucket` is set.
+    // when only `bucket` is set. DEFAULT_CATEGORIES use slug ids (e.g.
+    // "groceries") which InstantDB rejects — generate a real UUID here.
+    let resolvedId = categoryId;
     const existsInDb = dbCats.some((c) => c.id === categoryId);
     if (!existsInDb) {
       const def = DEFAULT_CATEGORIES.find((d) => d.id === categoryId);
       if (def) {
+        resolvedId = id();
         await db.transact(
-          db.tx.categories[categoryId].update({
+          db.tx.categories[resolvedId].update({
             name: def.name,
             color: def.color,
             icon: def.icon,
@@ -260,7 +263,7 @@ export function useBudgetMutations() {
     }
     if (bucket === null) {
       await db.transact(
-        db.tx.categories[categoryId].update({
+        db.tx.categories[resolvedId].update({
           bucket: undefined,
           targetAmount: undefined,
           frequencyMonths: undefined,
@@ -268,7 +271,7 @@ export function useBudgetMutations() {
         })
       );
     } else {
-      await db.transact(db.tx.categories[categoryId].update({ bucket }));
+      await db.transact(db.tx.categories[resolvedId].update({ bucket }));
     }
   }, [dbCats]);
 
