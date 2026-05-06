@@ -133,13 +133,15 @@ export function useBudgetPlan(planMonth = planMonthKey()) {
  */
 export function useBudgetSummary(planMonth = planMonthKey(), rangeStart?: Date, rangeEnd?: Date) {
   const categories = useMergedCategories();
-  const { payments } = useConvertedPayments();
+  const { payments, isLoading: paymentsLoading } = useConvertedPayments();
+  const { isLoading: categoriesLoading } = useCategories();
   const { categorize } = useCategorizer();
-  const { plans } = useBudgetPlans();
+  const { plans, isLoading: plansLoading } = useBudgetPlans();
   const rangeStartMs = rangeStart?.getTime();
   const rangeEndMs = rangeEnd?.getTime();
+  const isLoading = paymentsLoading || categoriesLoading || plansLoading;
 
-  return useMemo(() => {
+  const summary = useMemo(() => {
     const monthStart = rangeStartMs !== undefined
       ? rangeStartMs
       : new Date(planMonthYear(planMonth), planMonthMonth(planMonth), 1).getTime();
@@ -229,6 +231,8 @@ export function useBudgetSummary(planMonth = planMonthKey(), rangeStart?: Date, 
       anchor,
     };
   }, [categories, payments, categorize, plans, planMonth, rangeStartMs, rangeEndMs]);
+
+  return { ...summary, isLoading };
 }
 
 /**
