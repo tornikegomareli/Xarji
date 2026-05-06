@@ -117,7 +117,7 @@ and update them in the same commit.
 | [dashboard.md](dashboard.md) | `client/src/pages/Dashboard.tsx` — hero, donut, 9-month trend, top-merchant tiles, wheel-scroll regression guard | 2026-04-27 (PR #27) |
 | [transactions.md](transactions.md) | `client/src/pages/Transactions.tsx` — filters, day groups, side panel, URL drill-down ingestion | 2026-04-27 (PR #23) |
 | [categories.md](categories.md) | `client/src/pages/Categories.tsx` — left donut + list, per-cat detail, per-cat trend, merchant rows | 2026-04-27 (PR #23) |
-| [budgets.md](budgets.md) | `client/src/pages/Budgets.tsx` + `useBudgets` + `lib/budgets.ts` + `lib/ai/tools/budgets.ts` — three-bucket flex budgeting, rollover, AI tools | 2026-04-30 (PR #42) |
+| [budgets.md](budgets.md) | `client/src/pages/Budgets.tsx` + `useBudgets` + `lib/budgets.ts` + `lib/ai/tools/budgets.ts` — three-bucket flex budgeting, rollover, Cycle range, loading skeleton, AI tools | 2026-05-06 (current PR) |
 | [merchants.md](merchants.md) | `client/src/pages/Merchants.tsx` — table, search, drill-down rows | 2026-04-27 (PR #23) |
 | [income.md](income.md) | `client/src/pages/Income.tsx` — hero, income trend, ledger | 2026-04-27 (PR #23) |
 | [manage.md](manage.md) | `client/src/pages/Settings.tsx` mounted at `/manage` — Sync now button, CSRF, partial-failure UI | 2026-04-27 (PR #22) |
