@@ -45,12 +45,13 @@ export interface AIToolContext {
    *  have been manually re-categorised. */
   overrides: MerchantCategoryOverride[];
   now: Date;
-  /** Override-aware category-name lookup for a merchant. Honours the
-   *  user's manual `merchantCategoryOverrides` rows; falls back to the
-   *  regex categoriser. Tools should always call this instead of the
-   *  static `autoCategorize` so an "I moved Spotify to Subscriptions"
-   *  override actually shows up in the AI's view of the data. */
-  categorizeName: (merchant: string | null | undefined) => string;
+  /** Override-aware category-name lookup for a merchant. Pass the
+   *  payment's InstantDB id as the second arg to honour per-transaction
+   *  overrides too — without it only per-merchant overrides + regex
+   *  apply, and the AI's totals will diverge from the dashboard for
+   *  any transaction the user re-categorised one-off via the row's
+   *  CategoryPicker on /transactions. */
+  categorizeName: (merchant: string | null | undefined, paymentId?: string | null) => string;
   /** Override-aware category-id lookup. Same priority order as the
    *  page's categoriser: per-transaction override (when paymentId
    *  given) > per-merchant override > regex on merchant + raw SMS.
