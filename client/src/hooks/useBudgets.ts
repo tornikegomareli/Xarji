@@ -131,15 +131,24 @@ export function useBudgetPlan(planMonth = planMonthKey()) {
  * Months before the anchor are treated as 0-contribution; the user
  * hadn't started budgeting yet, so we don't retro-credit nor debit.
  */
-export function useBudgetSummary(planMonth = planMonthKey()) {
+export function useBudgetSummary(planMonth = planMonthKey(), rangeStart?: Date, rangeEnd?: Date) {
   const categories = useMergedCategories();
-  const { payments } = useConvertedPayments();
+  const { payments, isLoading: paymentsLoading } = useConvertedPayments();
+  const { isLoading: categoriesLoading } = useCategories();
   const { categorize } = useCategorizer();
-  const { plans } = useBudgetPlans();
+  const { plans, isLoading: plansLoading } = useBudgetPlans();
+  const rangeStartMs = rangeStart?.getTime();
+  const rangeEndMs = rangeEnd?.getTime();
+  const isLoading = paymentsLoading || categoriesLoading || plansLoading;
 
-  return useMemo(() => {
-    const monthStart = new Date(planMonthYear(planMonth), planMonthMonth(planMonth), 1).getTime();
-    const monthEnd = new Date(planMonthYear(planMonth), planMonthMonth(planMonth) + 1, 1).getTime();
+  const summary = useMemo(() => {
+    const monthStart = rangeStartMs !== undefined
+      ? rangeStartMs
+      : new Date(planMonthYear(planMonth), planMonthMonth(planMonth), 1).getTime();
+    // +1ms so endOfDay (23:59:59.999) is included when using < comparison
+    const monthEnd = rangeEndMs !== undefined
+      ? rangeEndMs + 1
+      : new Date(planMonthYear(planMonth), planMonthMonth(planMonth) + 1, 1).getTime();
     const anchor = anchorMonthFromPlans(plans);
 
     // Bucket-by-categoryId for current month spend AND build the
@@ -221,7 +230,9 @@ export function useBudgetSummary(planMonth = planMonthKey()) {
       nonMonthlySinkingFund,
       anchor,
     };
-  }, [categories, payments, categorize, plans, planMonth]);
+  }, [categories, payments, categorize, plans, planMonth, rangeStartMs, rangeEndMs]);
+
+  return { ...summary, isLoading };
 }
 
 /**
@@ -243,13 +254,16 @@ export function useBudgetMutations() {
   const setCategoryBucket = useCallback(async (categoryId: string, bucket: Bucket | null) => {
     // If this id belongs to a DEFAULT_CATEGORY that hasn't been written
     // to DB yet, seed a full row first so name/color/icon aren't lost
-    // when only `bucket` is set.
+    // when only `bucket` is set. DEFAULT_CATEGORIES use slug ids (e.g.
+    // "groceries") which InstantDB rejects — generate a real UUID here.
+    let resolvedId = categoryId;
     const existsInDb = dbCats.some((c) => c.id === categoryId);
     if (!existsInDb) {
       const def = DEFAULT_CATEGORIES.find((d) => d.id === categoryId);
       if (def) {
+        resolvedId = id();
         await db.transact(
-          db.tx.categories[categoryId].update({
+          db.tx.categories[resolvedId].update({
             name: def.name,
             color: def.color,
             icon: def.icon,
@@ -260,7 +274,7 @@ export function useBudgetMutations() {
     }
     if (bucket === null) {
       await db.transact(
-        db.tx.categories[categoryId].update({
+        db.tx.categories[resolvedId].update({
           bucket: undefined,
           targetAmount: undefined,
           frequencyMonths: undefined,
@@ -268,7 +282,7 @@ export function useBudgetMutations() {
         })
       );
     } else {
-      await db.transact(db.tx.categories[categoryId].update({ bucket }));
+      await db.transact(db.tx.categories[resolvedId].update({ bucket }));
     }
   }, [dbCats]);
 

@@ -33,12 +33,16 @@ day rolls over.
 
 **Steps**
 1. Navigate to `http://localhost:5173/budgets`.
-2. Wait for the page to render.
+2. Wait for the page to fully render (skeleton disappears).
 
 **Expected**
 - Sidebar entry **Flex Budgeting** appears between Categories and Merchants
   with glyph `◇`. No NEW pill.
-- Eyebrow: `Plan for <current month name> <year>` (e.g. `Plan for April 2026`).
+- While data loads: the "Flex remaining · GEL" card shows four pulsing
+  skeleton blocks (number, subtitle, bar, spent line). No wrong-data flash.
+- After load: eyebrow reads `Plan for <current month name> <year>`
+  (e.g. `Plan for May 2026`). Range buttons **Month** and **Cycle** are
+  visible in the header; **Month** is active.
 - Title: `Flex Budgeting`.
 - Right-side pill shows `0 unclassified` (every demo category has a bucket).
 - Headline card "Flex remaining · GEL" renders a non-zero number (≥₾2k on a
@@ -403,3 +407,35 @@ day rolls over.
 - Fixed-rollover-OFF rows (Utilities, Loans) start fresh with no carry.
 - The Income card's auto-derived expected income may shift because the
   3-month rolling window moved forward by one month.
+
+---
+
+## T-BUD-21 — Cycle range scopes all numbers to the custom window
+
+**Steps**
+1. Navigate to `/budgets`. Note the current Flex remaining value and the
+   eyebrow (`Plan for <month> <year>`).
+2. Click the **Cycle** range button in the header.
+3. The cycle-day input defaults to `25`. Leave it at 25.
+4. Note the new eyebrow label (e.g. `Cycle: Apr 25 – May 24, 2026`).
+5. Note the updated Flex remaining, `daysLeft`, and bucket actuals.
+6. Click **←** (previous cycle) — eyebrow shifts back one cycle.
+7. Click **→** (next cycle) — eyebrow advances to the next cycle.
+8. Change the cycle-day input to `10`. Eyebrow updates to the 10th–9th window.
+9. Click **Month** — page returns to calendar-month view.
+
+**Expected**
+- Step 2: `Month` deactivates, `Cycle` activates. Cycle controls appear
+  (prev/next arrows + day input).
+- Step 4: Eyebrow reads `Cycle: <start date> – <end date, year>`.
+- Step 5: Actuals and Flex remaining reflect only transactions within the
+  cycle window, not the full calendar month. On a day after the 25th the
+  cycle window is shorter than the calendar month, so actuals will be lower.
+  `daysLeft` shows days until the cycle end (e.g. `19 days` if today is the
+  5th of a month with a 25th-to-24th cycle).
+- Step 6–7: Eyebrow label shifts backward/forward by one cycle period.
+  Actuals update to match the selected historical or future window.
+- Step 8: Eyebrow updates to reflect the 10th-to-9th cycle.
+- Step 9: Eyebrow returns to `Plan for <month> <year>`. Range controls
+  collapse back to just Month/Cycle pills. Actuals revert to the full
+  calendar month.

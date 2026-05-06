@@ -11,12 +11,14 @@ import { BUCKETS, BUCKET_DESCRIPTIONS, BUCKET_LABELS, type Bucket, planMonthKey 
 import { useMergedCategories } from "../hooks/useCategories";
 import type { Category } from "../lib/instant";
 import { format } from "date-fns";
+import { useRangeState } from "../hooks/useRangeState";
 
 export function Budgets() {
   const T = useTheme();
-  const planMonth = planMonthKey();
+  const { range, props: rangeProps } = useRangeState("Month");
+  const planMonth = planMonthKey(range.start);
   const plan = useBudgetPlan(planMonth);
-  const summary = useBudgetSummary(planMonth);
+  const summary = useBudgetSummary(planMonth, range.start, range.end);
   const {
     setCategoryBucket,
     setCategoryTarget,
@@ -30,19 +32,34 @@ export function Budgets() {
   const flexRemaining = Math.max(0, plan.flexPool - summary.flexActual);
   const daysLeft = useMemo(() => {
     const now = new Date();
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    return Math.max(1, lastDay - now.getDate() + 1);
-  }, []);
+    const ms = range.end.getTime() - now.getTime();
+    return Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+  }, [range.end]);
 
-  const showWizard = summary.byBucket.fixed.length === 0 &&
+  const eyebrow = rangeProps.active === "Cycle" && rangeProps.cycleLabel
+    ? `Cycle: ${rangeProps.cycleLabel}`
+    : `Plan for ${format(range.start, "MMMM yyyy")}`;
+
+  const isLoading = plan.isLoading || summary.isLoading;
+
+  const showWizard = !isLoading &&
+    summary.byBucket.fixed.length === 0 &&
     summary.byBucket.flex.length === 0 &&
     summary.byBucket.non_monthly.length === 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap, height: "100%" }}>
       <PageHeader
-        eyebrow={`Plan for ${format(new Date(), "MMMM yyyy")}`}
+        eyebrow={eyebrow}
         title="Flex Budgeting"
+        ranges={["Month", "Cycle"]}
+        active={rangeProps.active}
+        onRange={rangeProps.onRange}
+        cycleDay={rangeProps.cycleDay}
+        cycleLabel={rangeProps.cycleLabel}
+        onCycleDayChange={rangeProps.onCycleDayChange}
+        onCyclePrev={rangeProps.onCyclePrev}
+        onCycleNext={rangeProps.onCycleNext}
         rightSlot={
           <Pill bg={T.accentSoft} color={T.accent}>
             {summary.byBucket.unclassified.length} unclassified
@@ -53,53 +70,68 @@ export function Budgets() {
       {/* Headline: flex remaining */}
       <Card pad="26px 30px" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <CardLabel>Flex remaining · GEL</CardLabel>
-        <div
-          style={{
-            fontSize: "clamp(44px, 6vw, 72px)",
-            fontWeight: 700,
-            letterSpacing: -3,
-            lineHeight: 1,
-            color: T.text,
-            fontFamily: T.sans,
-            whiteSpace: "nowrap",
-          }}
-        >
-          <span style={{ color: T.accent, opacity: 0.9 }}>₾</span>
-          {Math.round(flexRemaining).toLocaleString("en-US")}
-          <span style={{ fontSize: "0.42em", color: T.muted }}>
-            .{flexRemaining.toFixed(2).split(".")[1] || "00"}
-          </span>
-        </div>
-        <div style={{ fontSize: 12.5, color: T.muted, fontFamily: T.sans }}>
-          ₾{Math.round(flexRemaining / daysLeft).toLocaleString("en-US")}/day for the next {daysLeft} day
-          {daysLeft === 1 ? "" : "s"} · ₾{Math.round(plan.flexPool).toLocaleString("en-US")} pool
-          {plan.flexPoolIsAuto ? " (auto)" : " (manual)"}
-        </div>
-        {/* Flex usage bar */}
-        <div
-          style={{
-            marginTop: 8,
-            height: 8,
-            background: T.panelAlt,
-            borderRadius: 4,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              width: `${flexUsedPct}%`,
-              height: "100%",
-              background: T.accent,
-              transition: "width 200ms ease-out",
-            }}
-          />
-        </div>
-        <div style={{ fontSize: 11, color: T.dim, fontFamily: T.mono, fontVariantNumeric: "tabular-nums" }}>
-          ₾{Math.round(summary.flexActual).toLocaleString("en-US")} spent · {flexUsedPct.toFixed(0)}% of pool
-        </div>
+        {isLoading ? (
+          <>
+            <div className="skeleton-pulse" style={{ height: 60, width: "55%", background: T.panelAlt }} />
+            <div className="skeleton-pulse" style={{ height: 14, width: "70%", background: T.panelAlt }} />
+            <div style={{ marginTop: 8, height: 8, background: T.panelAlt, borderRadius: 4 }} />
+            <div className="skeleton-pulse" style={{ height: 12, width: "40%", background: T.panelAlt }} />
+          </>
+        ) : (
+          <>
+            <div
+              style={{
+                fontSize: "clamp(44px, 6vw, 72px)",
+                fontWeight: 700,
+                letterSpacing: -3,
+                lineHeight: 1,
+                color: T.text,
+                fontFamily: T.sans,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span style={{ color: T.accent, opacity: 0.9 }}>₾</span>
+              {Math.round(flexRemaining).toLocaleString("en-US")}
+              <span style={{ fontSize: "0.42em", color: T.muted }}>
+                .{flexRemaining.toFixed(2).split(".")[1] || "00"}
+              </span>
+            </div>
+            <div style={{ fontSize: 12.5, color: T.muted, fontFamily: T.sans }}>
+              ₾{Math.round(flexRemaining / daysLeft).toLocaleString("en-US")}/day for the next {daysLeft} day
+              {daysLeft === 1 ? "" : "s"} · ₾{Math.round(plan.flexPool).toLocaleString("en-US")} pool
+              {plan.flexPoolIsAuto ? " (auto)" : " (manual)"}
+            </div>
+            {/* Flex usage bar */}
+            <div
+              style={{
+                marginTop: 8,
+                height: 8,
+                background: T.panelAlt,
+                borderRadius: 4,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${flexUsedPct}%`,
+                  height: "100%",
+                  background: T.accent,
+                  transition: "width 200ms ease-out",
+                }}
+              />
+            </div>
+            <div style={{ fontSize: 11, color: T.dim, fontFamily: T.mono, fontVariantNumeric: "tabular-nums" }}>
+              ₾{Math.round(summary.flexActual).toLocaleString("en-US")} spent · {flexUsedPct.toFixed(0)}% of pool
+            </div>
+          </>
+        )}
       </Card>
 
-      {showWizard ? (
+      {isLoading ? (
+        <Card pad="40px 30px" style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 13, color: T.muted, fontFamily: T.sans }}>Loading…</div>
+        </Card>
+      ) : showWizard ? (
         <SetupWizard onClassify={setCategoryBucket} />
       ) : (
         <>
