@@ -614,13 +614,20 @@ describe("TBC parser — Latin transliteration", () => {
   });
 
   test("outgoing transfer (Gadaricxva) classifies as transfer_out", () => {
+    // Layout mirrors the existing Georgian "transfer with named
+    // counterparty" test: header / amount / account-hint /
+    // date / counterparty. parseCounterpartyAfterDate returns the
+    // line AFTER the date, which is the counterparty (TBC CARD here
+    // since the user's real SMS pays off a credit card from current).
     const tx = tbcParser.parse(
       mk(
         901,
         [
-          "Gadaricxva: 670.00 GEL",
-          "TBC CARD",
+          "Gadaricxva:",
+          "670.00 GEL",
+          "VISA GOLD",
           "05/05/2026",
+          "TBC CARD",
         ].join("\n")
       )
     )!;
@@ -629,6 +636,8 @@ describe("TBC parser — Latin transliteration", () => {
     expect(tx.direction).toBe("out");
     expect(tx.amount).toBe(670);
     expect(tx.currency).toBe("GEL");
+    expect(tx.counterparty).toBe("TBC CARD");
+    expect(tx.merchant).toBe("TBC CARD");
   });
 
   test("self-transfer (Sakutar angarishebze) is skipped", () => {
@@ -744,12 +753,17 @@ describe("TBC parser — Latin transliteration", () => {
   });
 
   test("scheduled auto-transfer (Avtomaturi gadaricxva)", () => {
+    // 5-line layout mirroring the existing Georgian Geocell test:
+    // header / amount / merchant / paren-info / date. parseBillMerchant
+    // returns lines[2] (the merchant) for this shape.
     const tx = tbcParser.parse(
       mk(
         908,
         [
-          "Avtomaturi gadaricxva 50.00 GEL",
+          "Avtomaturi gadaricxva",
+          "50.00 GEL",
           "Geocell",
+          "(N 591300569)",
           "05/05/2026",
         ].join("\n")
       )
@@ -757,34 +771,45 @@ describe("TBC parser — Latin transliteration", () => {
     expect(tx).not.toBeNull();
     expect(tx.transactionType).toBe("transfer_out");
     expect(tx.amount).toBe(50);
+    expect(tx.merchant).toBe("Geocell");
   });
 
   test("bill payment (Gadakhda) classifies as transfer_out", () => {
+    // 5-line layout mirroring the existing Georgian TELMICO test:
+    // header / amount / merchant / ID:NNN / date. parseBillMerchant
+    // returns lines[2] (the merchant).
     const tx = tbcParser.parse(
       mk(
         909,
         [
-          "Gadakhda: 75.00 GEL",
+          "Gadakhda:",
+          "75.00 GEL",
           "Magti",
-          "05/05/2026",
+          "ID:5802811",
+          "Sheqmnis tarigi: 05/05/2026 12:00:00",
         ].join("\n")
       )
     )!;
     expect(tx).not.toBeNull();
     expect(tx.transactionType).toBe("transfer_out");
     expect(tx.amount).toBe(75);
+    expect(tx.merchant).toBe("Magti");
   });
 
   test("failed card payment (Sabarate operacia ... uarYofiliA)", () => {
+    // 5-line layout mirroring the existing Georgian declined-card test:
+    // header (with amount + uarYofiliA) / Mizezi / card / date / merchant.
+    // parseFailedMerchant returns the line AFTER the date, so the merchant
+    // belongs there, not before it.
     const tx = tbcParser.parse(
       mk(
         910,
         [
-          "Sabarate operacia 100.00 GEL uarYofiliA",
-          "VISA (***7940)",
-          "MERCHANT",
-          "05/05/2026",
+          "!Sabarate operacia 100.00 GEL uarYofiliA.",
           "Mizezi: insufficient funds",
+          "VISA GOLD (***'7940')",
+          "05/05/2026",
+          "MERCHANT.NAME",
         ].join("\n")
       )
     )!;
@@ -793,6 +818,8 @@ describe("TBC parser — Latin transliteration", () => {
     expect(tx.status).toBe("failed");
     expect(tx.amount).toBe(100);
     expect(tx.failureReason).toBe("insufficient funds");
+    expect(tx.cardLastDigits).toBe("7940");
+    expect(tx.merchant).toBe("MERCHANT.NAME");
   });
 
   test("loan repayment (Sesxis dapharva)", () => {
