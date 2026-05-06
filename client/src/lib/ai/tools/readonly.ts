@@ -57,7 +57,10 @@ const getMonthSummary: AITool = {
       m.total += p.gelAmount;
       m.count += 1;
       merchantTotals.set(merchant, m);
-      const category = ctx.categorizeName(p.merchant ?? null);
+      // Pass p.id so the model's category aggregations honour
+      // per-transaction overrides — without it, AI numbers diverge
+      // from /budgets and the donut for any one-off reclassified row.
+      const category = ctx.categorizeName(p.merchant ?? null, p.id);
       const c = categoryTotals.get(category) ?? { total: 0, count: 0 };
       c.total += p.gelAmount;
       c.count += 1;
@@ -160,7 +163,7 @@ const searchTransactions: AITool = {
           if (!haystack.includes(query)) continue;
         }
         if (category) {
-          const cat = ctx.categorizeName(p.merchant ?? null).toLowerCase();
+          const cat = ctx.categorizeName(p.merchant ?? null, p.id).toLowerCase();
           if (cat !== category) continue;
         }
         if (currency && p.currency.toUpperCase() !== currency) continue;
@@ -178,7 +181,7 @@ const searchTransactions: AITool = {
           amount: p.amount,
           currency: p.currency,
           gelAmount: p.gelAmount !== null ? Math.round(p.gelAmount) : null,
-          category: ctx.categorizeName(p.merchant ?? null),
+          category: ctx.categorizeName(p.merchant ?? null, p.id),
           card: p.cardLastDigits ?? null,
           excludedFromAnalytics: p.excludedFromAnalytics === true,
         });
@@ -260,7 +263,7 @@ const compareMonths: AITool = {
         if (!inRange(p.transactionDate) || p.gelAmount === null) continue;
         if (p.excludedFromAnalytics) continue;
         spent += p.gelAmount;
-        const cat = ctx.categorizeName(p.merchant ?? null);
+        const cat = ctx.categorizeName(p.merchant ?? null, p.id);
         cats.set(cat, (cats.get(cat) ?? 0) + p.gelAmount);
       }
       for (const c of ctx.credits) {
@@ -306,7 +309,7 @@ const listCategories: AITool = {
     for (const p of ctx.payments) {
       if (!inMonth(p.transactionDate) || p.gelAmount === null) continue;
       if (p.excludedFromAnalytics) continue;
-      const cat = ctx.categorizeName(p.merchant ?? null);
+      const cat = ctx.categorizeName(p.merchant ?? null, p.id);
       const v = monthTotals.get(cat) ?? { total: 0, count: 0 };
       v.total += p.gelAmount;
       v.count += 1;

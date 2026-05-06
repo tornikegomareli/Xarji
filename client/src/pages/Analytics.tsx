@@ -144,7 +144,7 @@ export function Analytics() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {largeTx.map((t) => {
-                const cat = getCategory(t.merchant, t.rawMessage);
+                const cat = getCategory(t.merchant, t.rawMessage, t.id);
                 return (
                   <div
                     key={t.id}

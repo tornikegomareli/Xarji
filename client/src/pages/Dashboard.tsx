@@ -59,7 +59,11 @@ export function Dashboard() {
       if (p.excludedFromAnalytics) continue;
       if (p.gelAmount === null) continue;
       if (!isWithinInterval(new Date(p.transactionDate), { start: range.start, end: range.end })) continue;
-      const cat = getCategory(p.merchant, p.rawMessage);
+      // Pass p.id so per-transaction overrides land in the right
+      // bucket. Without the third arg the donut sees only per-merchant
+      // overrides + regex defaults, so a user who reclassified a row
+      // via /transactions sees no shift here.
+      const cat = getCategory(p.merchant, p.rawMessage, p.id);
       if (!map[cat.id]) map[cat.id] = { total: 0, count: 0, meta: cat };
       map[cat.id].total += p.gelAmount;
       map[cat.id].count += 1;
@@ -83,7 +87,7 @@ export function Dashboard() {
         cardLastDigits: p.cardLastDigits,
         transactionDate: p.transactionDate,
         bankSenderId: p.bankSenderId,
-        category: getCategory(p.merchant, p.rawMessage).id,
+        category: getCategory(p.merchant, p.rawMessage, p.id).id,
         rawMessage: p.rawMessage,
         plusEarned: p.plusEarned,
         excludedFromAnalytics: p.excludedFromAnalytics,
@@ -98,7 +102,10 @@ export function Dashboard() {
         cardLastDigits: f.cardLastDigits,
         transactionDate: f.transactionDate,
         bankSenderId: f.bankSenderId,
-        category: getCategory(f.merchant, f.rawMessage).id,
+        // Failed payments don't get per-tx overrides today (there's no
+        // CategoryPicker on a failed row) but pass the id for symmetry
+        // and in case that surface ever opens up.
+        category: getCategory(f.merchant, f.rawMessage, f.id).id,
         rawMessage: f.rawMessage,
         failureReason: f.failureReason,
       })),
