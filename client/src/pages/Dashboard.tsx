@@ -9,7 +9,7 @@ import { useRangeStats, useRangeTopMerchants } from "../hooks/useMonthlyAnalytic
 import { useMonthlyTrend } from "../hooks/useMonthlyTrend";
 import { useCredits, useRangeCredits } from "../hooks/useCredits";
 import { useRangeState } from "../hooks/useRangeState";
-import { previousRange, rangeToDateParams } from "../lib/dateRange";
+import { previousRange, rangeFromKey, rangeToDateParams } from "../lib/dateRange";
 import { formatCompact, formatLocalDay } from "../ink/format";
 import { type InkCategory } from "../lib/utils";
 import { useCategorizer } from "../hooks/useCategorizer";
@@ -25,6 +25,15 @@ export function Dashboard() {
 
   const stats = useRangeStats(range);
   const topMerchants = useRangeTopMerchants(range, 5);
+  // Today's spend tile is range-independent — the "quick glance how much
+  // I spent today" use case is the whole point. Pin it to today/this-month
+  // even when the user switches the page range to Week/Year/Cycle.
+  const todayRange = useMemo(() => rangeFromKey("Today", new Date()), []);
+  const monthRangeForAvg = useMemo(() => rangeFromKey("Month", new Date()), []);
+  const todayStats = useRangeStats(todayRange);
+  const monthStatsForAvg = useRangeStats(monthRangeForAvg);
+  const dayOfMonth = new Date().getDate();
+  const monthDailyAvg = dayOfMonth > 0 ? monthStatsForAvg.total / dayOfMonth : 0;
   const trend = useMonthlyTrend(9);
   const { payments } = useConvertedPayments();
   const { failedPayments } = useFailedPayments();
@@ -301,11 +310,24 @@ export function Dashboard() {
         <div
           style={{
             display: "grid",
-            gridTemplateRows: vp.veryNarrow ? "none" : "1fr 1fr",
-            gridTemplateColumns: vp.veryNarrow ? "1fr 1fr" : "1fr",
+            // Three rows on regular layout: today (compact), income, net.
+            // Today gets `auto` so its height stays minimal and Income +
+            // NetCashflow split the remaining space. veryNarrow squashes
+            // everything into a 3-col strip so the today tile sits beside
+            // the other two without dominating.
+            gridTemplateRows: vp.veryNarrow ? "none" : "auto 1fr 1fr",
+            gridTemplateColumns: vp.veryNarrow ? "1fr 1fr 1fr" : "1fr",
             gap: T.density.gap,
           }}
         >
+          <TodaySpendCard
+            T={T}
+            vpNarrow={vp.narrow}
+            spend={todayStats.total}
+            count={todayStats.count}
+            monthDailyAvg={monthDailyAvg}
+          />
+
           <IncomeCard
             T={T}
             vpNarrow={vp.narrow}
@@ -630,6 +652,75 @@ function CashflowLegend({
         {value}
       </div>
     </div>
+  );
+}
+
+/**
+ * "How much did I spend today?" tile in the right column. Pinned to
+ * today + this-month-avg regardless of the selected range so the user
+ * can land on Overview at any range and still glance at today's number.
+ */
+function TodaySpendCard({
+  T,
+  vpNarrow,
+  spend,
+  count,
+  monthDailyAvg,
+}: {
+  T: InkTheme;
+  vpNarrow: boolean;
+  spend: number;
+  count: number;
+  monthDailyAvg: number;
+}) {
+  // Comparison vs typical day this month — green if today is below the
+  // running average (good day), accent if above (heavier than usual).
+  // Suppressed when there's no average to compare against.
+  const hasAvg = monthDailyAvg > 0.5;
+  const delta = hasAvg ? ((spend - monthDailyAvg) / monthDailyAvg) * 100 : null;
+  const aboveAvg = delta !== null && delta > 5;
+  const belowAvg = delta !== null && delta < -5;
+  const todayLabel = new Date().toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
+  return (
+    <Card pad="18px 22px" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <span style={{ whiteSpace: "nowrap" }}>
+          <CardLabel>Today · {todayLabel}</CardLabel>
+        </span>
+        {hasAvg && delta !== null && (
+          <Pill
+            bg={aboveAvg ? T.accentSoft : belowAvg ? "rgba(75,217,162,0.12)" : T.panelAlt}
+            color={aboveAvg ? T.accent : belowAvg ? T.green : T.dim}
+          >
+            {delta >= 0 ? "+" : ""}
+            {delta.toFixed(0)}% vs avg
+          </Pill>
+        )}
+      </div>
+
+      <div
+        style={{
+          fontSize: vpNarrow ? 32 : 40,
+          fontWeight: 800,
+          letterSpacing: -1.6,
+          lineHeight: 1,
+          color: T.text,
+          fontFamily: T.sans,
+          whiteSpace: "nowrap",
+        }}
+      >
+        −₾{Math.round(spend).toLocaleString("en-US")}
+      </div>
+
+      <div style={{ fontSize: 12, color: T.muted, fontFamily: T.sans, lineHeight: 1.5 }}>
+        {count === 0
+          ? "No transactions yet today."
+          : `${count} transaction${count === 1 ? "" : "s"}${
+              hasAvg ? ` · avg ₾${Math.round(monthDailyAvg).toLocaleString("en-US")}/day this month` : ""
+            }`}
+      </div>
+    </Card>
   );
 }
 
