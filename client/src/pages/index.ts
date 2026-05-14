@@ -5,5 +5,6 @@ export { Budgets } from "./Budgets";
 export { Merchants } from "./Merchants";
 export { Income } from "./Income";
 export { Analytics as Signals } from "./Analytics";
+export { Plan } from "./Plan";
 export { Settings } from "./Settings";
 export { Assistant } from "./Assistant";

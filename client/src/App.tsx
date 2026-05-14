@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "./components/Layout";
-import { Dashboard, Transactions, Categories, Budgets, Merchants, Income, Signals, Settings, Assistant } from "./pages";
+import { Dashboard, Transactions, Categories, Budgets, Merchants, Income, Signals, Settings, Assistant, Plan } from "./pages";
 
 function App() {
   return (
@@ -13,6 +13,7 @@ function App() {
           <Route path="categories" element={<Categories />} />
           <Route path="budgets" element={<Budgets />} />
           <Route path="merchants" element={<Merchants />} />
+          <Route path="plan" element={<Plan />} />
           <Route path="assistant" element={<Assistant />} />
           <Route path="signals" element={<Signals />} />
           <Route path="manage" element={<Settings />} />
