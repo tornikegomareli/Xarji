@@ -36,6 +36,8 @@ function seed(dataset: DemoDataset) {
   store.set("categories", dataset.categories as unknown as AnyRecord[]);
   store.set("bankSenders", dataset.bankSenders as unknown as AnyRecord[]);
   store.set("budgetPlans", dataset.budgetPlans as unknown as AnyRecord[]);
+  store.set("mustPayItems", dataset.mustPayItems as unknown as AnyRecord[]);
+  store.set("mustPayState", dataset.mustPayState as unknown as AnyRecord[]);
 }
 
 function getSnapshot(collection: Collection): readonly AnyRecord[] {

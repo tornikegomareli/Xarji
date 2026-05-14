@@ -153,6 +153,36 @@ const schema = i.schema({
       categoryId: i.string(),
       createdAt: i.number(),
     }),
+
+    // Free-form "things I owe" list. Not derived from SMS — the user
+    // types these in directly on the Must Pay page. We keep the
+    // service-side mirror so future tooling (cron exports, AI
+    // read-only summaries, etc.) has a typed schema to query against.
+    mustPayItems: i.entity({
+      title: i.string(),
+      amountGEL: i.number(),
+      // null = never paid (still pending). Number = epoch ms of the
+      // most recent mark-paid click. Recurring items auto-reset on
+      // month rollover purely as a render-time computation in
+      // useMustPay.isItemPaidThisCycle — no cron, no migration.
+      lastPaidAt: i.number().optional(),
+      isRecurring: i.boolean(),
+      notes: i.string().optional(),
+      dueDate: i.number().optional(),
+      createdAt: i.number(),
+      updatedAt: i.number(),
+    }),
+
+    // Singleton row holding the user's current "pot" — how much money
+    // they have right now. The Must Pay page subtracts pending
+    // obligations from this to give them "free" — the headline number
+    // they actually came to the page for. Keyed "singleton" with a
+    // unique constraint so concurrent upserts can't duplicate it.
+    mustPayState: i.entity({
+      key: i.string().unique(),
+      currentPotGEL: i.number(),
+      updatedAt: i.number(),
+    }),
   },
   links: {},
 });

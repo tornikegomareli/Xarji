@@ -87,6 +87,33 @@ const schema = i.schema({
       categoryId: i.string(),
       createdAt: i.number(),
     }),
+    // Free-form "things I owe" list. Not derived from SMS — the user
+    // types these in directly. Used by the Must Pay page to give them
+    // a glance at obligations vs the wallet pot before they spend.
+    mustPayItems: i.entity({
+      title: i.string(),
+      amountGEL: i.number(),
+      // null = never paid (still pending). Number = epoch ms of the
+      // most recent mark-paid click. Derived paid state is computed in
+      // useMustPay.isItemPaidThisCycle so recurring items auto-reset on
+      // month rollover without a cron.
+      lastPaidAt: i.number().optional(),
+      isRecurring: i.boolean(),
+      notes: i.string().optional(),
+      dueDate: i.number().optional(),
+      createdAt: i.number(),
+      updatedAt: i.number(),
+    }),
+    // Singleton row holding the user's current "pot" — how much money
+    // they have right now. Subtracted from the pending obligations
+    // total to surface the headline "free" figure on the Must Pay
+    // page. Keyed "singleton" with a unique constraint so concurrent
+    // upserts can't duplicate it.
+    mustPayState: i.entity({
+      key: i.string().unique(),
+      currentPotGEL: i.number(),
+      updatedAt: i.number(),
+    }),
     credits: i.entity({
       transactionId: i.string().unique(),
       transactionType: i.string(),
@@ -247,6 +274,25 @@ export type TransactionCategoryOverride = {
   paymentId: string;
   categoryId: string;
   createdAt: number;
+};
+
+export type MustPayItem = {
+  id: string;
+  title: string;
+  amountGEL: number;
+  lastPaidAt?: number;
+  isRecurring: boolean;
+  notes?: string;
+  dueDate?: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type MustPayState = {
+  id: string;
+  key: string;
+  currentPotGEL: number;
+  updatedAt: number;
 };
 
 export type Credit = {

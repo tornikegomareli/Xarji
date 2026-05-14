@@ -15,10 +15,12 @@ export function Sidebar({
   txCount,
   signalsCount,
   incomeCount,
+  mustPayCount,
 }: {
   txCount?: number;
   signalsCount?: number;
   incomeCount?: number;
+  mustPayCount?: number;
 }) {
   const T = useTheme();
   const pwa = usePwaInstall();
@@ -29,6 +31,12 @@ export function Sidebar({
     { to: "/categories", name: "Categories", glyph: "◐" },
     { to: "/budgets", name: "Flex Budgeting", glyph: "◇" },
     { to: "/merchants", name: "Merchants", glyph: "◆" },
+    // pillBadge for Must Pay (vs the muted `badge` used by Transactions
+    // and Income) because the count represents work the user hasn't
+    // done yet — the brighter accent pill matches "items needing
+    // attention" the same way Signals uses it for triggered rules.
+    // Position between Merchants and Assistant per the design.
+    { to: "/plan", name: "Must pay", glyph: "◫", pillBadge: mustPayCount ? String(mustPayCount) : undefined },
     { to: "/assistant", name: "Assistant", glyph: "✧" },
     { to: "/signals", name: "Signals", glyph: "✦", badge: signalsCount ? String(signalsCount) : undefined },
     { to: "/manage", name: "Manage", glyph: "⚙" },

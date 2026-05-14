@@ -15,6 +15,7 @@ import {
 import { usePayments } from "../hooks/useTransactions";
 import { useSignals } from "../hooks/useSignals";
 import { useCredits } from "../hooks/useCredits";
+import { usePendingMustPayCount } from "../hooks/useMustPay";
 import { useHealth } from "../hooks/useHealth";
 import {
   Onboarding,
@@ -98,6 +99,7 @@ function ConfiguredShell() {
   const { payments } = usePayments();
   const signals = useSignals();
   const { credits } = useCredits();
+  const mustPayCount = usePendingMustPayCount();
   return (
     <>
       <div
@@ -110,6 +112,7 @@ function ConfiguredShell() {
           txCount={payments.length}
           incomeCount={credits.length}
           signalsCount={signals.activeCount || undefined}
+          mustPayCount={mustPayCount || undefined}
         />
         <main
           style={{
