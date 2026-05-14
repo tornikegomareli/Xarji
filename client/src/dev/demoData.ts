@@ -7,7 +7,7 @@
 // from `./demoDb`, which itself is only reached behind a static
 // `import.meta.env.DEV && isDemoMode()` gate in `lib/instant.ts`.
 
-import type { Payment, FailedPayment, Credit, Category, BankSender, BudgetPlan } from "../lib/instant";
+import type { Payment, FailedPayment, Credit, Category, BankSender, BudgetPlan, MustPayItem, MustPayState } from "../lib/instant";
 import { DEFAULT_CATEGORIES } from "../lib/utils";
 
 function mulberry32(seed: number) {
@@ -434,6 +434,72 @@ export interface DemoDataset {
   categories: Category[];
   bankSenders: BankSender[];
   budgetPlans: BudgetPlan[];
+  mustPayItems: MustPayItem[];
+  mustPayState: MustPayState[];
+}
+
+// Seeded must-pay list. Mix of recurring monthly bills + a one-off,
+// plus one row marked paid this cycle so the strike-through state is
+// visible in demo mode without the demo viewer having to click first.
+function buildMustPayItems(now: Date): MustPayItem[] {
+  const ts = now.getTime();
+  return [
+    {
+      id: "mp-rent",
+      title: "Rent",
+      amountGEL: 800,
+      lastPaidAt: undefined,
+      isRecurring: true,
+      createdAt: ts - 30 * 24 * 3600 * 1000,
+      updatedAt: ts - 30 * 24 * 3600 * 1000,
+    },
+    {
+      id: "mp-loan",
+      title: "Car loan",
+      amountGEL: 450,
+      lastPaidAt: undefined,
+      isRecurring: true,
+      notes: "Auto-deducts on the 5th",
+      createdAt: ts - 60 * 24 * 3600 * 1000,
+      updatedAt: ts - 60 * 24 * 3600 * 1000,
+    },
+    {
+      id: "mp-friend",
+      title: "Pay back Luka",
+      amountGEL: 200,
+      lastPaidAt: undefined,
+      isRecurring: false,
+      notes: "Borrowed for concert tickets",
+      createdAt: ts - 5 * 24 * 3600 * 1000,
+      updatedAt: ts - 5 * 24 * 3600 * 1000,
+    },
+    {
+      id: "mp-subs",
+      title: "Spotify + Netflix",
+      amountGEL: 60,
+      // Already paid this cycle — shows the strike-through state on
+      // demo load so reviewers see the visual without interacting.
+      lastPaidAt: ts - 3 * 24 * 3600 * 1000,
+      isRecurring: true,
+      createdAt: ts - 90 * 24 * 3600 * 1000,
+      updatedAt: ts - 3 * 24 * 3600 * 1000,
+    },
+  ];
+}
+
+function buildMustPayState(): MustPayState[] {
+  // Pot seeded at ₾2000 — well above the ₾1450 of unpaid obligations
+  // in buildMustPayItems so the headline "Free" figure renders green.
+  // Drop this lower (e.g. 1200) if you want demo viewers to land
+  // straight on the overdrawn warning state.
+  return [
+    {
+      id: "mps-singleton",
+      key: "singleton",
+      currentPotGEL: 2000,
+      updatedAt: Date.now(),
+    },
+  ];
 }
 
 // Two months of budgetPlans seeded for the demo: the current month
@@ -481,6 +547,8 @@ export function buildDemoDataset(seed: "default" | "empty"): DemoDataset {
       categories: [],
       bankSenders: [],
       budgetPlans: [],
+      mustPayItems: [],
+      mustPayState: [],
     };
   }
   const rng = mulberry32(20260424);
@@ -492,5 +560,7 @@ export function buildDemoDataset(seed: "default" | "empty"): DemoDataset {
     categories: CATEGORIES,
     bankSenders: SENDERS,
     budgetPlans: buildBudgetPlans(now),
+    mustPayItems: buildMustPayItems(now),
+    mustPayState: buildMustPayState(),
   };
 }
