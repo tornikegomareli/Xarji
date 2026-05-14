@@ -28,14 +28,15 @@ export function Sidebar({
     { to: "/", name: "Overview", glyph: "◉" },
     { to: "/transactions", name: "Transactions", glyph: "≡", badge: txCount ? txCount.toLocaleString("en-US") : undefined },
     { to: "/income", name: "Income", glyph: "↓", badge: incomeCount ? incomeCount.toLocaleString("en-US") : undefined },
-    // pillBadge for Must Pay (vs the muted `badge` used by Transactions
-    // and Income) because the count here represents work the user
-    // hasn't done yet — the brighter accent pill matches "items needing
-    // attention" the same way Signals uses it for triggered rules.
-    { to: "/plan", name: "Must Pay", glyph: "⊕", pillBadge: mustPayCount ? String(mustPayCount) : undefined },
     { to: "/categories", name: "Categories", glyph: "◐" },
     { to: "/budgets", name: "Flex Budgeting", glyph: "◇" },
     { to: "/merchants", name: "Merchants", glyph: "◆" },
+    // pillBadge for Must Pay (vs the muted `badge` used by Transactions
+    // and Income) because the count represents work the user hasn't
+    // done yet — the brighter accent pill matches "items needing
+    // attention" the same way Signals uses it for triggered rules.
+    // Position between Merchants and Assistant per the design.
+    { to: "/plan", name: "Must pay", glyph: "◫", pillBadge: mustPayCount ? String(mustPayCount) : undefined },
     { to: "/assistant", name: "Assistant", glyph: "✧" },
     { to: "/signals", name: "Signals", glyph: "✦", badge: signalsCount ? String(signalsCount) : undefined },
     { to: "/manage", name: "Manage", glyph: "⚙" },

@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { isSameMonth } from "date-fns";
 import { id } from "@instantdb/react";
 import { db, type MustPayItem, type MustPayState } from "../lib/instant";
 
@@ -37,18 +36,16 @@ export function useMustPayState() {
 export function useMustPayActions() {
   const { data } = db.useQuery({ mustPayState: {} });
 
-  const create = async (input: {
-    title: string;
-    amountGEL: number;
-    isRecurring: boolean;
-    notes?: string;
-    dueDate?: number;
-  }) => {
+  const create = async (input: { title: string; amountGEL: number }) => {
     const now = Date.now();
     const itemId = id();
+    // isRecurring stays in the schema for backward compat but the
+    // design dropped the toggle — every new item is one-off, "paid"
+    // means paid forever until manually unchecked.
     await db.transact(
       db.tx.mustPayItems[itemId].update({
         ...input,
+        isRecurring: false,
         createdAt: now,
         updatedAt: now,
       })
@@ -63,18 +60,15 @@ export function useMustPayActions() {
   };
 
   /**
-   * Toggling "paid" doesn't store a boolean — it sets or clears
-   * `lastPaidAt` and lets the consumer derive paid-ness from the
-   * timestamp via `isItemPaidThisCycle`. That's what gives recurring
-   * items their automatic month-rollover without any background job.
+   * Toggling "paid" sets or clears `lastPaidAt`. The page treats any
+   * non-null lastPaidAt as paid (paid stays paid until unchecked).
    */
   const togglePaid = async (item: MustPayItem) => {
-    const now = new Date();
-    const currentlyPaid = isItemPaidThisCycle(item, now);
+    const now = Date.now();
     await db.transact(
       db.tx.mustPayItems[item.id].update({
-        lastPaidAt: currentlyPaid ? null : now.getTime(),
-        updatedAt: now.getTime(),
+        lastPaidAt: isItemPaid(item) ? null : now,
+        updatedAt: now,
       })
     );
   };
@@ -113,16 +107,13 @@ export function useMustPayActions() {
  */
 export function usePendingMustPayCount(): number {
   const { items } = useMustPayItems();
-  const now = new Date();
-  return items.filter((it) => !isItemPaidThisCycle(it, now)).length;
+  return items.filter((it) => !isItemPaid(it)).length;
 }
 
 // ── Pure helpers (no React, no DB — unit-testable) ────────────────────────
 
-export function isItemPaidThisCycle(item: MustPayItem, now: Date = new Date()): boolean {
-  if (item.lastPaidAt == null) return false;
-  if (!item.isRecurring) return true;
-  return isSameMonth(new Date(item.lastPaidAt), now);
+export function isItemPaid(item: MustPayItem): boolean {
+  return item.lastPaidAt != null;
 }
 
 export interface MustPaySummary {
@@ -132,13 +123,13 @@ export interface MustPaySummary {
   paidTotal: number;
 }
 
-export function summarizeMustPay(items: MustPayItem[], now: Date = new Date()): MustPaySummary {
+export function summarizeMustPay(items: MustPayItem[]): MustPaySummary {
   let pendingCount = 0;
   let pendingTotal = 0;
   let paidCount = 0;
   let paidTotal = 0;
   for (const it of items) {
-    if (isItemPaidThisCycle(it, now)) {
+    if (isItemPaid(it)) {
       paidCount++;
       paidTotal += it.amountGEL;
     } else {
@@ -154,7 +145,14 @@ export interface PotMath {
   isOverdrawn: boolean;
 }
 
-export function computePotMath(pot: number, pendingTotal: number): PotMath {
-  const free = pot - pendingTotal;
+/**
+ * Free = Pot − (Pending + Paid). The pot represents the user's
+ * starting wallet; paid obligations have already left it conceptually
+ * but we still subtract them so checking an item paid doesn't make
+ * Free rise (the money was always going to leave). The split between
+ * pending and paid is a workflow indicator, not a flow.
+ */
+export function computePotMath(pot: number, pendingTotal: number, paidTotal: number): PotMath {
+  const free = pot - pendingTotal - paidTotal;
   return { free, isOverdrawn: free < 0 };
 }

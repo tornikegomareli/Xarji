@@ -1,508 +1,710 @@
 import { useMemo, useState, useEffect, useRef } from "react";
-import { format } from "date-fns";
 import { useTheme, type InkTheme } from "../ink/theme";
-import { Card, CardLabel, PageHeader, Pill } from "../ink/primitives";
+import { Card, CardTitle, PageHeader, Pill } from "../ink/primitives";
 import {
   useMustPayItems,
   useMustPayState,
   useMustPayActions,
-  isItemPaidThisCycle,
+  isItemPaid,
   summarizeMustPay,
   computePotMath,
 } from "../hooks/useMustPay";
-import { useBudgetPlan } from "../hooks/useBudgets";
 import type { MustPayItem } from "../lib/instant";
+
+const POT_PRESETS = [1500, 2000, 3000, 5000];
 
 export function Plan() {
   const T = useTheme();
-  const now = new Date();
   const { items, isLoading } = useMustPayItems();
   const { currentPotGEL } = useMustPayState();
   const { create, update, togglePaid, remove, setCurrentPot } = useMustPayActions();
-  // useBudgetPlan already resolves the auto-derive fallback when no
-  // stored row exists for the current month, so we get a single
-  // canonical expectedIncome number to compare obligations against.
-  const { expectedIncome: rawExpectedIncome } = useBudgetPlan();
 
-  const [creating, setCreating] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const summary = useMemo(() => summarizeMustPay(items, now), [items, now]);
-  const { free, isOverdrawn } = computePotMath(currentPotGEL, summary.pendingTotal);
+  const summary = useMemo(() => summarizeMustPay(items), [items]);
+  const { free, isOverdrawn } = computePotMath(currentPotGEL, summary.pendingTotal, summary.paidTotal);
+  // Three percentages for the stacked progress bar. Paid (green) and
+  // pending (accent) consume the obligation portion of the pot; the
+  // remainder is free.
+  const paidPct = currentPotGEL > 0 ? Math.min(100, (summary.paidTotal / currentPotGEL) * 100) : 0;
+  const pendingPct = currentPotGEL > 0 ? Math.min(100 - paidPct, (summary.pendingTotal / currentPotGEL) * 100) : 0;
+  const freePct = currentPotGEL > 0 ? Math.max(0, (free / currentPotGEL) * 100) : 0;
 
-  // Sort: unpaid first (by dueDate asc if present, else createdAt desc),
-  // paid below in createdAt desc order. Single sort with a composite key.
+  // Sort: unpaid first (newest first), paid below (in createdAt desc order).
   const sorted = useMemo(() => {
     const copy = [...items];
     copy.sort((a, b) => {
-      const aPaid = isItemPaidThisCycle(a, now);
-      const bPaid = isItemPaidThisCycle(b, now);
+      const aPaid = isItemPaid(a);
+      const bPaid = isItemPaid(b);
       if (aPaid !== bPaid) return aPaid ? 1 : -1;
-      if (!aPaid) {
-        // Both pending — due date asc wins, otherwise newest first.
-        if (a.dueDate != null && b.dueDate != null) return a.dueDate - b.dueDate;
-        if (a.dueDate != null) return -1;
-        if (b.dueDate != null) return 1;
-      }
       return b.createdAt - a.createdAt;
     });
     return copy;
-  }, [items, now]);
-
-  // Hide the comparison line entirely when no number is available
-  // (fresh install with no prior income history) so we don't render
-  // "vs ₾0".
-  const expectedIncome = rawExpectedIncome > 0 ? rawExpectedIncome : null;
-
-  const eyebrow = `Plan what you owe · ${format(now, "MMMM")}`;
+  }, [items]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: T.density.gap, minHeight: 0 }}>
       <PageHeader
-        eyebrow={eyebrow}
-        title="Must Pay"
+        eyebrow="What's already promised · before you spend"
+        title="Must pay"
         ranges={null}
         rightSlot={
-          summary.pendingCount > 0 ? (
-            <Pill bg={T.accentSoft} color={T.accent}>
-              {summary.pendingCount} pending
-            </Pill>
-          ) : (
-            <Pill bg={T.panelAlt} color={T.dim}>
-              All clear
-            </Pill>
-          )
+          <Pill bg={T.accentSoft} color={T.accent}>
+            {summary.pendingCount} unpaid
+          </Pill>
         }
       />
 
+      {/* Headline — Free dominates. Three columns split by vertical
+          dividers, Free in the middle takes 1.4fr so it visually
+          claims the page. */}
       <HeadlineCard
         T={T}
-        currentPotGEL={currentPotGEL}
-        pendingTotal={summary.pendingTotal}
+        pot={currentPotGEL}
+        pending={summary.pendingTotal}
+        paid={summary.paidTotal}
         free={free}
         isOverdrawn={isOverdrawn}
-        expectedIncome={expectedIncome}
+        paidPct={paidPct}
+        pendingPct={pendingPct}
+        freePct={freePct}
+        itemCount={items.length}
+        pendingCount={summary.pendingCount}
+        paidCount={summary.paidCount}
         onPotChange={setCurrentPot}
       />
 
-      <Card pad="20px 22px" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {/* Obligations list */}
+      <Card pad="0">
+        <div
+          style={{
+            padding: "14px 20px",
+            borderBottom: `1px solid ${T.line}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <CardTitle>Obligations</CardTitle>
+          <button
+            type="button"
+            onClick={() => {
+              setAdding(true);
+              setEditingId(null);
+            }}
+            style={{
+              padding: "7px 13px",
+              borderRadius: 9,
+              border: "none",
+              background: T.accent,
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 700,
+              fontFamily: T.sans,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> Add item
+          </button>
+        </div>
+
+        {adding && (
+          <RowEditor
+            T={T}
+            initial={{ title: "", amountGEL: NaN }}
+            onCancel={() => setAdding(false)}
+            onSave={async (v) => {
+              await create({ title: v.title, amountGEL: v.amountGEL });
+              setAdding(false);
+            }}
+          />
+        )}
+
         {isLoading ? (
-          <div style={{ color: T.muted, fontSize: 13, padding: "20px 0", fontFamily: T.sans }}>Loading…</div>
-        ) : items.length === 0 && !creating ? (
-          <div style={{ color: T.muted, fontSize: 13, padding: "20px 0", fontFamily: T.sans }}>
-            Nothing to pay yet. Click below to add your first obligation.
+          <div style={{ padding: "40px 20px", textAlign: "center", color: T.muted, fontSize: 13, fontFamily: T.sans }}>
+            Loading…
           </div>
+        ) : items.length === 0 && !adding ? (
+          <EmptyState T={T} onAdd={() => setAdding(true)} />
         ) : (
-          sorted.map((it) => {
-            const isEditing = editingId === it.id;
-            if (isEditing) {
-              return (
-                <ItemForm
+          <div>
+            {sorted.map((it, i) =>
+              editingId === it.id ? (
+                <RowEditor
                   key={it.id}
                   T={T}
                   initial={it}
                   onCancel={() => setEditingId(null)}
-                  onSubmit={async (input) => {
-                    await update(it.id, input);
+                  onSave={async (v) => {
+                    await update(it.id, { title: v.title, amountGEL: v.amountGEL });
                     setEditingId(null);
                   }}
-                  submitLabel="Save"
                 />
-              );
-            }
-            return (
-              <ItemRow
-                key={it.id}
-                T={T}
-                item={it}
-                now={now}
-                onToggle={() => togglePaid(it)}
-                onEdit={() => {
-                  setEditingId(it.id);
-                  setCreating(false);
-                }}
-                onDelete={() => {
-                  if (window.confirm(`Delete "${it.title}"? This cannot be undone.`)) {
-                    void remove(it.id);
-                  }
-                }}
-              />
-            );
-          })
-        )}
-
-        {creating ? (
-          <ItemForm
-            T={T}
-            onCancel={() => setCreating(false)}
-            onSubmit={async (input) => {
-              await create(input);
-              setCreating(false);
-            }}
-            submitLabel="Add"
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              setCreating(true);
-              setEditingId(null);
-            }}
-            style={{
-              marginTop: 8,
-              padding: "10px 12px",
-              background: "transparent",
-              border: `1px dashed ${T.line}`,
-              borderRadius: 10,
-              color: T.muted,
-              fontSize: 12.5,
-              fontWeight: 600,
-              fontFamily: T.sans,
-              cursor: "pointer",
-              textAlign: "left",
-            }}
-          >
-            + Add obligation…
-          </button>
+              ) : (
+                <Row
+                  key={it.id}
+                  T={T}
+                  item={it}
+                  isLast={i === sorted.length - 1}
+                  onToggle={() => togglePaid(it)}
+                  onEdit={() => {
+                    setEditingId(it.id);
+                    setAdding(false);
+                  }}
+                  onDelete={() => {
+                    if (window.confirm(`Delete "${it.title}"? This cannot be undone.`)) {
+                      void remove(it.id);
+                    }
+                  }}
+                />
+              )
+            )}
+          </div>
         )}
       </Card>
     </div>
   );
 }
 
-// ── Headline card: Pot / Pending / Free with optional income compare ──────
+// ── Headline card: Pot / Free / Pending in 3 columns ───────────────────────
 
 function HeadlineCard({
   T,
-  currentPotGEL,
-  pendingTotal,
+  pot,
+  pending,
+  paid,
   free,
   isOverdrawn,
-  expectedIncome,
+  paidPct,
+  pendingPct,
+  freePct,
+  itemCount,
+  pendingCount,
+  paidCount,
   onPotChange,
 }: {
   T: InkTheme;
-  currentPotGEL: number;
-  pendingTotal: number;
+  pot: number;
+  pending: number;
+  paid: number;
   free: number;
   isOverdrawn: boolean;
-  expectedIncome: number | null;
+  paidPct: number;
+  pendingPct: number;
+  freePct: number;
+  itemCount: number;
+  pendingCount: number;
+  paidCount: number;
   onPotChange: (amount: number) => Promise<void>;
 }) {
-  const [draft, setDraft] = useState<string>(String(currentPotGEL));
-  const [focused, setFocused] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(pot));
 
-  // Keep the input in sync when an external write updates the pot
-  // (e.g. demo seed loads, or another tab updates the singleton). The
-  // user's in-flight edit takes priority — we only re-sync when they're
-  // not focused so we don't yank the value out from under them.
   useEffect(() => {
-    if (!focused) setDraft(String(currentPotGEL));
-  }, [currentPotGEL, focused]);
+    if (!editing) setDraft(String(pot));
+  }, [pot, editing]);
 
   const commit = () => {
-    const parsed = Number(draft);
-    if (Number.isFinite(parsed) && parsed >= 0 && parsed !== currentPotGEL) {
-      void onPotChange(parsed);
-    } else {
-      // Invalid / unchanged — revert the input to the persisted value.
-      setDraft(String(currentPotGEL));
+    const v = parseFloat(draft.replace(/[^\d.-]/g, ""));
+    if (Number.isFinite(v) && v >= 0 && v !== pot) {
+      void onPotChange(v);
     }
+    setEditing(false);
   };
 
-  const leftoverAfterObligations =
-    expectedIncome != null ? expectedIncome - pendingTotal : null;
+  // Stack on narrow viewports — three columns become a 3-row stack so
+  // the headline stays readable on phones and split-pane Macs.
+  const isNarrow = typeof window !== "undefined" && window.innerWidth < 760;
 
   return (
-    <Card pad="24px 28px" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <Card pad="0" style={{ overflow: "hidden" }}>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr",
-          gap: 24,
+          // Four columns on desktop with Free still 1.4fr so it stays
+          // dominant. Narrow viewports stack everything vertically.
+          gridTemplateColumns: isNarrow ? "1fr" : "0.95fr 1.4fr 0.85fr 0.85fr",
+          alignItems: "stretch",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <CardLabel>Current pot</CardLabel>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-            <span style={{ fontSize: 32, fontWeight: 800, color: T.text, fontFamily: T.sans }}>₾</span>
-            <input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step="any"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => {
-                setFocused(false);
-                commit();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  (e.currentTarget as HTMLInputElement).blur();
-                } else if (e.key === "Escape") {
-                  setDraft(String(currentPotGEL));
-                  (e.currentTarget as HTMLInputElement).blur();
-                }
-              }}
-              style={{
-                fontSize: 32,
-                fontWeight: 800,
-                letterSpacing: -1.2,
-                color: T.text,
-                fontFamily: T.sans,
-                background: "transparent",
-                border: "none",
-                outline: "none",
-                padding: 0,
-                width: "100%",
-                minWidth: 0,
-                fontVariantNumeric: "tabular-nums",
-              }}
-            />
+        {/* POT — left, editable */}
+        <div
+          style={{
+            padding: "32px 32px",
+            borderRight: isNarrow ? "none" : `1px solid ${T.line}`,
+            borderBottom: isNarrow ? `1px solid ${T.line}` : "none",
+          }}
+        >
+          <SectionEyebrow T={T}>Pot</SectionEyebrow>
+          <SectionSubtitle T={T}>What you have right now</SectionSubtitle>
+          <div style={{ marginTop: 20 }}>
+            {editing ? (
+              <input
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commit();
+                  if (e.key === "Escape") {
+                    setDraft(String(pot));
+                    setEditing(false);
+                  }
+                }}
+                inputMode="decimal"
+                style={{
+                  width: "100%",
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  color: T.text,
+                  fontFamily: T.sans,
+                  fontSize: 44,
+                  fontWeight: 700,
+                  letterSpacing: -1.6,
+                  padding: 0,
+                  lineHeight: 1.1,
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft(String(pot));
+                  setEditing(true);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  cursor: "text",
+                  fontFamily: T.sans,
+                  color: T.text,
+                  fontSize: 44,
+                  fontWeight: 700,
+                  letterSpacing: -1.6,
+                  lineHeight: 1.1,
+                  textAlign: "left",
+                }}
+              >
+                ₾{pot.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                <span
+                  style={{
+                    marginLeft: 10,
+                    fontSize: 11,
+                    color: T.dim,
+                    fontFamily: T.mono,
+                    fontWeight: 500,
+                    letterSpacing: 0.5,
+                    textTransform: "uppercase",
+                    verticalAlign: "middle",
+                  }}
+                >
+                  edit ✎
+                </span>
+              </button>
+            )}
           </div>
-          <div style={{ fontSize: 11, color: T.dim, fontFamily: T.sans }}>
-            What's in your wallet right now
+          <div style={{ display: "flex", gap: 6, marginTop: 16, flexWrap: "wrap" }}>
+            {POT_PRESETS.map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => void onPotChange(v)}
+                style={{
+                  padding: "5px 10px",
+                  borderRadius: 6,
+                  border: `1px solid ${T.line}`,
+                  background: T.panelAlt,
+                  color: T.muted,
+                  fontSize: 10.5,
+                  fontFamily: T.mono,
+                  cursor: "pointer",
+                }}
+              >
+                ₾{v.toLocaleString("en-US")}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <CardLabel>Pending</CardLabel>
+        {/* FREE — middle, dominant. Tinted background plus a blurred
+            orb in the corner that picks up the success/warning color
+            and gives the cell its visual weight. */}
+        <div
+          style={{
+            padding: "32px 36px",
+            background: free >= 0 ? "rgba(75,217,162,0.06)" : T.accentSoft,
+            borderRight: isNarrow ? "none" : `1px solid ${T.line}`,
+            borderBottom: isNarrow ? `1px solid ${T.line}` : "none",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: -80,
+              right: -50,
+              width: 220,
+              height: 220,
+              borderRadius: "50%",
+              background: free >= 0 ? T.green : T.accent,
+              opacity: 0.18,
+              filter: "blur(70px)",
+            }}
+          />
+          <div style={{ position: "relative" }}>
+            <div
+              style={{
+                fontSize: 11,
+                color: free >= 0 ? T.green : T.accent,
+                fontFamily: T.mono,
+                letterSpacing: 1.4,
+                textTransform: "uppercase",
+                fontWeight: 700,
+              }}
+            >
+              {free >= 0 ? "Free to spend" : "Over by"}
+            </div>
+            <div style={{ fontSize: 11.5, color: T.muted, marginTop: 4, fontFamily: T.sans }}>
+              {free >= 0
+                ? "Yours after everything promised"
+                : `Pending exceeds your pot by ₾${Math.abs(free).toLocaleString("en-US")}`}
+            </div>
+            <div
+              style={{
+                marginTop: 16,
+                fontFamily: T.sans,
+                fontWeight: 700,
+                fontSize: "clamp(56px, 7.5vw, 84px)",
+                letterSpacing: -3.6,
+                lineHeight: 1,
+                color: free >= 0 ? T.green : T.accent,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {isOverdrawn ? "−" : ""}₾
+              {Math.abs(free).toLocaleString("en-US", { maximumFractionDigits: 2 })}
+            </div>
+            <div style={{ marginTop: 22 }}>
+              {/* Stacked bar: green (paid) + accent (pending) + empty
+                  (free). Reads left-to-right as a quick breakdown of
+                  where the pot is committed. */}
+              <div
+                style={{
+                  height: 8,
+                  borderRadius: 4,
+                  background: T.panelAlt,
+                  overflow: "hidden",
+                  display: "flex",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${paidPct}%`,
+                    background: T.green,
+                    transition: "width .3s ease",
+                  }}
+                />
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${pendingPct}%`,
+                    background: T.accent,
+                    transition: "width .3s ease",
+                  }}
+                />
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginTop: 7,
+                  fontSize: 10.5,
+                  color: T.dim,
+                  fontFamily: T.mono,
+                  letterSpacing: 0.3,
+                }}
+              >
+                <span>{Math.round(paidPct)}% paid · {Math.round(pendingPct)}% pending</span>
+                <span>{Math.round(freePct)}% free</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* PENDING */}
+        <div
+          style={{
+            padding: "32px 28px",
+            borderRight: isNarrow ? "none" : `1px solid ${T.line}`,
+            borderBottom: isNarrow ? `1px solid ${T.line}` : "none",
+          }}
+        >
+          <SectionEyebrow T={T}>Pending</SectionEyebrow>
+          <SectionSubtitle T={T}>Sum of unpaid</SectionSubtitle>
           <div
             style={{
-              fontSize: 32,
-              fontWeight: 800,
-              letterSpacing: -1.2,
+              marginTop: 20,
+              fontSize: 38,
+              fontWeight: 700,
               color: T.text,
               fontFamily: T.sans,
-              fontVariantNumeric: "tabular-nums",
+              letterSpacing: -1.4,
+              lineHeight: 1.1,
             }}
           >
-            ₾{Math.round(pendingTotal).toLocaleString("en-US")}
+            ₾{pending.toLocaleString("en-US", { maximumFractionDigits: 2 })}
           </div>
-          <div style={{ fontSize: 11, color: T.dim, fontFamily: T.sans }}>
-            Things still to pay
+          <div
+            style={{
+              marginTop: 16,
+              fontSize: 11.5,
+              color: T.muted,
+              fontFamily: T.sans,
+              lineHeight: 1.5,
+            }}
+          >
+            {pendingCount} of {itemCount} item{itemCount === 1 ? "" : "s"} still to pay
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <CardLabel>Free</CardLabel>
+        {/* PAID — far right. Tinted faint-green background so the
+            green-vs-accent paid/pending split reads at a glance and
+            mirrors the green segment in the progress bar above. */}
+        <div
+          style={{
+            padding: "32px 28px",
+            background: "rgba(75,217,162,0.04)",
+          }}
+        >
           <div
             style={{
-              fontSize: 32,
-              fontWeight: 800,
-              letterSpacing: -1.2,
-              color: isOverdrawn ? T.accent : T.green,
-              fontFamily: T.sans,
-              fontVariantNumeric: "tabular-nums",
+              fontSize: 11,
+              color: T.green,
+              fontFamily: T.mono,
+              letterSpacing: 1.2,
+              textTransform: "uppercase",
+              fontWeight: 700,
             }}
           >
-            {isOverdrawn ? "−" : ""}₾{Math.abs(Math.round(free)).toLocaleString("en-US")}
+            Paid
           </div>
-          <div style={{ fontSize: 11, color: isOverdrawn ? T.accent : T.dim, fontFamily: T.sans }}>
-            {isOverdrawn
-              ? `Over by ₾${Math.abs(Math.round(free)).toLocaleString("en-US")}`
-              : "Pot minus obligations"}
+          <SectionSubtitle T={T}>Already settled</SectionSubtitle>
+          <div
+            style={{
+              marginTop: 20,
+              fontSize: 38,
+              fontWeight: 700,
+              color: T.green,
+              fontFamily: T.sans,
+              letterSpacing: -1.4,
+              lineHeight: 1.1,
+            }}
+          >
+            ₾{paid.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+          </div>
+          <div
+            style={{
+              marginTop: 16,
+              fontSize: 11.5,
+              color: T.muted,
+              fontFamily: T.sans,
+              lineHeight: 1.5,
+            }}
+          >
+            {paidCount} of {itemCount} item{itemCount === 1 ? "" : "s"} settled
           </div>
         </div>
       </div>
-
-      {expectedIncome != null && leftoverAfterObligations != null && (
-        <div
-          style={{
-            fontSize: 12,
-            color: T.muted,
-            fontFamily: T.sans,
-            paddingTop: 10,
-            borderTop: `1px solid ${T.line}`,
-          }}
-        >
-          vs ₾{Math.round(expectedIncome).toLocaleString("en-US")} typical income ·{" "}
-          <span style={{ color: leftoverAfterObligations < 0 ? T.accent : T.text, fontWeight: 700 }}>
-            ₾{Math.abs(Math.round(leftoverAfterObligations)).toLocaleString("en-US")}
-            {leftoverAfterObligations < 0 ? " short" : " leftover"}
-          </span>{" "}
-          after obligations
-        </div>
-      )}
     </Card>
   );
 }
 
-// ── Single row ─────────────────────────────────────────────────────────────
+function SectionEyebrow({ T, children }: { T: InkTheme; children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        color: T.dim,
+        fontFamily: T.mono,
+        letterSpacing: 1.2,
+        textTransform: "uppercase",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
-function ItemRow({
+function SectionSubtitle({ T, children }: { T: InkTheme; children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 11.5, color: T.muted, marginTop: 4, fontFamily: T.sans }}>
+      {children}
+    </div>
+  );
+}
+
+// ── Row ────────────────────────────────────────────────────────────────────
+
+function Row({
   T,
   item,
-  now,
+  isLast,
   onToggle,
   onEdit,
   onDelete,
 }: {
   T: InkTheme;
   item: MustPayItem;
-  now: Date;
+  isLast: boolean;
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const paid = isItemPaidThisCycle(item, now);
-  const overdue = !paid && item.dueDate != null && item.dueDate < now.getTime();
-
+  const paid = isItemPaid(item);
   return (
     <div
       style={{
-        display: "flex",
+        display: "grid",
+        gridTemplateColumns: "32px 1fr auto auto",
+        gap: 14,
         alignItems: "center",
-        gap: 12,
-        padding: "12px 12px",
-        borderRadius: 10,
-        opacity: paid ? 0.45 : 1,
-        transition: "opacity 120ms ease-out",
+        padding: "16px 20px",
+        borderBottom: isLast ? "none" : `1px solid ${T.line}`,
       }}
     >
       <button
         type="button"
         onClick={onToggle}
-        title={paid ? "Mark unpaid" : "Mark paid"}
+        aria-label={paid ? "Mark unpaid" : "Mark paid"}
         style={{
-          width: 22,
-          height: 22,
-          borderRadius: 6,
-          border: `1.5px solid ${paid ? T.green : T.line}`,
-          background: paid ? T.green : "transparent",
-          color: "#fff",
-          fontSize: 13,
-          lineHeight: 1,
+          width: 24,
+          height: 24,
+          borderRadius: 7,
+          background: paid ? T.accent : "transparent",
+          border: paid ? `1.5px solid ${T.accent}` : `1.5px solid ${T.lineStrong || T.line}`,
           cursor: "pointer",
-          flexShrink: 0,
+          padding: 0,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          transition: "background .12s, border-color .12s",
         }}
       >
-        {paid ? "✓" : ""}
+        {paid && <span style={{ color: "#fff", fontSize: 14, fontWeight: 800, lineHeight: 1 }}>✓</span>}
       </button>
 
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+      <div style={{ minWidth: 0 }}>
         <div
           style={{
-            fontSize: 13,
+            fontSize: 15,
             fontWeight: 600,
-            color: T.text,
+            color: paid ? T.muted : T.text,
             fontFamily: T.sans,
             textDecoration: paid ? "line-through" : "none",
+            textDecorationColor: T.muted,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
         >
           {item.title}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {item.isRecurring && (
-            <span style={{ fontSize: 10, color: T.dim, fontFamily: T.mono }}>↻ monthly</span>
-          )}
-          {item.dueDate != null && (
-            <span style={{ fontSize: 10, color: overdue ? T.accent : T.dim, fontFamily: T.mono, fontWeight: overdue ? 700 : 400 }}>
-              {overdue ? "OVERDUE · " : "due "}
-              {format(new Date(item.dueDate), "MMM d")}
-            </span>
-          )}
-          {item.notes && (
-            <span style={{ fontSize: 11, color: T.muted, fontFamily: T.sans }}>{item.notes}</span>
-          )}
-        </div>
       </div>
 
-      <span
+      <div
         style={{
-          fontSize: 14,
-          fontWeight: 700,
-          color: T.text,
+          fontSize: 17,
           fontFamily: T.sans,
-          minWidth: 70,
-          textAlign: "right",
+          fontWeight: 700,
+          color: paid ? T.muted : T.text,
           fontVariantNumeric: "tabular-nums",
+          letterSpacing: -0.4,
           textDecoration: paid ? "line-through" : "none",
+          textDecorationColor: T.muted,
+          minWidth: 92,
+          textAlign: "right",
         }}
       >
-        ₾{Math.round(item.amountGEL).toLocaleString("en-US")}
-      </span>
+        ₾{item.amountGEL.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+      </div>
 
-      <button
-        type="button"
-        title="Edit"
-        onClick={onEdit}
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 11,
-          border: `1px solid ${T.line}`,
-          background: "transparent",
-          color: T.dim,
-          fontSize: 11,
-          lineHeight: 1,
-          cursor: "pointer",
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        ✎
-      </button>
-      <button
-        type="button"
-        title="Delete"
-        onClick={onDelete}
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 11,
-          border: `1px solid ${T.line}`,
-          background: "transparent",
-          color: T.dim,
-          fontSize: 12,
-          lineHeight: 1,
-          cursor: "pointer",
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        ×
-      </button>
+      <div style={{ display: "flex", gap: 4 }}>
+        <button
+          type="button"
+          onClick={onEdit}
+          title="Edit"
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 7,
+            background: "transparent",
+            border: `1px solid ${T.line}`,
+            color: T.muted,
+            cursor: "pointer",
+            fontSize: 12,
+            fontFamily: T.sans,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+          }}
+        >
+          ✎
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          title="Delete"
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 7,
+            background: "transparent",
+            border: `1px solid ${T.line}`,
+            color: T.muted,
+            cursor: "pointer",
+            fontSize: 14,
+            fontFamily: T.sans,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            lineHeight: 1,
+          }}
+        >
+          ×
+        </button>
+      </div>
     </div>
   );
 }
 
-// ── Inline create/edit form ───────────────────────────────────────────────
+// ── Inline editor: name + amount only ─────────────────────────────────────
 
-function ItemForm({
+function RowEditor({
   T,
   initial,
-  onSubmit,
+  onSave,
   onCancel,
-  submitLabel,
 }: {
   T: InkTheme;
-  initial?: Partial<MustPayItem>;
-  onSubmit: (input: {
-    title: string;
-    amountGEL: number;
-    isRecurring: boolean;
-    notes?: string;
-    dueDate?: number;
-  }) => Promise<void>;
+  initial: { title: string; amountGEL: number };
+  onSave: (v: { title: string; amountGEL: number }) => Promise<void>;
   onCancel: () => void;
-  submitLabel: string;
 }) {
-  const [title, setTitle] = useState(initial?.title ?? "");
-  const [amount, setAmount] = useState(initial?.amountGEL != null ? String(initial.amountGEL) : "");
-  const [isRecurring, setIsRecurring] = useState(initial?.isRecurring ?? false);
-  const [notes, setNotes] = useState(initial?.notes ?? "");
-  const [dueDate, setDueDate] = useState(
-    initial?.dueDate != null ? format(new Date(initial.dueDate), "yyyy-MM-dd") : ""
+  const [title, setTitle] = useState(initial.title);
+  const [amount, setAmount] = useState(
+    Number.isFinite(initial.amountGEL) ? String(initial.amountGEL) : ""
   );
   const [submitting, setSubmitting] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -511,144 +713,183 @@ function ItemForm({
     titleRef.current?.focus();
   }, []);
 
-  const submit = async () => {
-    const trimmed = title.trim();
-    const parsedAmount = Number(amount);
-    if (!trimmed || !Number.isFinite(parsedAmount) || parsedAmount <= 0) return;
+  const parsedAmount = parseFloat(amount);
+  const valid = title.trim().length > 0 && Number.isFinite(parsedAmount) && parsedAmount > 0;
+
+  const submit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!valid || submitting) return;
     setSubmitting(true);
     try {
-      await onSubmit({
-        title: trimmed,
-        amountGEL: parsedAmount,
-        isRecurring,
-        notes: notes.trim() || undefined,
-        dueDate: dueDate ? new Date(dueDate).getTime() : undefined,
-      });
+      await onSave({ title: title.trim(), amountGEL: parsedAmount });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const inputStyle: React.CSSProperties = {
-    padding: "8px 10px",
-    background: T.panelAlt,
-    border: `1px solid ${T.line}`,
-    borderRadius: 8,
-    color: T.text,
-    fontSize: 13,
-    fontFamily: T.sans,
-    outline: "none",
-  };
-
   return (
-    <div
+    <form
+      onSubmit={submit}
       style={{
-        padding: "12px",
+        display: "grid",
+        gridTemplateColumns: "32px 1fr 150px auto",
+        gap: 12,
+        alignItems: "center",
+        padding: "14px 20px",
         background: T.panelAlt,
-        border: `1px solid ${T.line}`,
-        borderRadius: 10,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-        marginTop: 4,
+        borderBottom: `1px solid ${T.line}`,
       }}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10 }}>
-        <input
-          ref={titleRef}
-          type="text"
-          placeholder="What needs paying? (e.g. Rent)"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          style={inputStyle}
-        />
-        <input
-          type="number"
-          inputMode="decimal"
-          min={0}
-          step="any"
-          placeholder="Amount ₾"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          style={{ ...inputStyle, fontVariantNumeric: "tabular-nums" }}
-        />
-      </div>
+      <div style={{ width: 24, height: 24, borderRadius: 7, border: `1.5px dashed ${T.line}` }} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 10 }}>
-        <input
-          type="text"
-          placeholder="Notes (optional)"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          style={inputStyle}
-        />
-        <input
-          type="date"
-          placeholder="Due date"
-          value={dueDate}
-          onChange={(e) => setDueDate(e.target.value)}
-          style={inputStyle}
-        />
-      </div>
-
-      <label
+      <input
+        ref={titleRef}
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="What's owed? — Rent, Loan, Pay back Luka…"
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          color: T.muted,
-          fontSize: 12.5,
+          background: T.bg,
+          border: `1px solid ${T.line}`,
+          color: T.text,
+          padding: "10px 12px",
+          borderRadius: 8,
+          fontSize: 14,
           fontFamily: T.sans,
-          cursor: "pointer",
+          outline: "none",
         }}
-      >
-        <input
-          type="checkbox"
-          checked={isRecurring}
-          onChange={(e) => setIsRecurring(e.target.checked)}
-          style={{ cursor: "pointer" }}
-        />
-        Repeats monthly — auto-resets on the 1st
-      </label>
+      />
 
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+      <div style={{ position: "relative" }}>
+        <span
+          style={{
+            position: "absolute",
+            left: 12,
+            top: "50%",
+            transform: "translateY(-50%)",
+            color: T.muted,
+            fontSize: 13,
+            fontFamily: T.sans,
+            pointerEvents: "none",
+          }}
+        >
+          ₾
+        </span>
+        <input
+          value={amount}
+          onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
+          inputMode="decimal"
+          placeholder="0"
+          style={{
+            width: "100%",
+            background: T.bg,
+            border: `1px solid ${T.line}`,
+            color: T.text,
+            padding: "10px 12px 10px 24px",
+            borderRadius: 8,
+            fontSize: 14,
+            fontFamily: T.sans,
+            outline: "none",
+            textAlign: "right",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        />
+      </div>
+
+      <div style={{ display: "flex", gap: 6 }}>
         <button
           type="button"
           onClick={onCancel}
           style={{
-            padding: "7px 14px",
+            padding: "9px 12px",
+            borderRadius: 8,
             background: "transparent",
             border: `1px solid ${T.line}`,
-            borderRadius: 8,
             color: T.muted,
             fontSize: 12,
-            fontWeight: 600,
             fontFamily: T.sans,
+            fontWeight: 600,
             cursor: "pointer",
           }}
         >
           Cancel
         </button>
         <button
-          type="button"
-          onClick={submit}
-          disabled={submitting || !title.trim() || !amount}
+          type="submit"
+          disabled={!valid || submitting}
           style={{
-            padding: "7px 14px",
-            background: T.accent,
-            border: `1px solid ${T.accent}`,
+            padding: "9px 14px",
             borderRadius: 8,
-            color: "#fff",
+            border: "none",
+            background: valid && !submitting ? T.accent : T.panelAlt,
+            color: valid && !submitting ? "#fff" : T.dim,
             fontSize: 12,
-            fontWeight: 700,
             fontFamily: T.sans,
-            cursor: submitting || !title.trim() || !amount ? "not-allowed" : "pointer",
-            opacity: submitting || !title.trim() || !amount ? 0.5 : 1,
+            fontWeight: 700,
+            cursor: valid && !submitting ? "pointer" : "not-allowed",
           }}
         >
-          {submitting ? "…" : submitLabel}
+          Save ↵
         </button>
       </div>
+    </form>
+  );
+}
+
+// ── Empty state ────────────────────────────────────────────────────────────
+
+function EmptyState({ T, onAdd }: { T: InkTheme; onAdd: () => void }) {
+  return (
+    <div style={{ padding: "60px 32px", textAlign: "center" }}>
+      <div
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 16,
+          background: T.panelAlt,
+          color: T.accent,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 24,
+          margin: "0 auto 16px",
+          fontFamily: T.sans,
+        }}
+      >
+        ✓
+      </div>
+      <div style={{ fontSize: 18, fontFamily: T.serif, color: T.text, letterSpacing: -0.5, marginBottom: 8 }}>
+        Nothing promised yet.
+      </div>
+      <div
+        style={{
+          fontSize: 13,
+          color: T.muted,
+          fontFamily: T.sans,
+          lineHeight: 1.55,
+          maxWidth: 320,
+          margin: "0 auto",
+        }}
+      >
+        Add what you owe — rent, loans, money to friends — and you'll know at a glance what's really yours to spend.
+      </div>
+      <button
+        type="button"
+        onClick={onAdd}
+        style={{
+          marginTop: 18,
+          padding: "10px 18px",
+          borderRadius: 10,
+          border: "none",
+          background: T.accent,
+          color: "#fff",
+          fontSize: 12.5,
+          fontWeight: 700,
+          fontFamily: T.sans,
+          cursor: "pointer",
+        }}
+      >
+        Add your first item
+      </button>
     </div>
   );
 }
