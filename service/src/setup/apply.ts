@@ -155,6 +155,12 @@ export function bootstrapSeed(): Array<{ table: string; data: Record<string, unk
         title: "__setup__",
         amountGEL: 0,
         isRecurring: false,
+        // lastPaidAt is the field the togglePaid action writes on
+        // every mark-paid click. Include a dummy value here so the
+        // attribute exists in InstantDB before the first user toggle —
+        // otherwise the schema-backed client would hit a
+        // missing-attribute error on the very first interaction.
+        lastPaidAt: 0,
         createdAt: now,
         updatedAt: now,
       },

@@ -202,12 +202,18 @@ function HeadlineCard({
   paidCount: number;
   onPotChange: (amount: number) => Promise<void>;
 }) {
+  // The draft string only matters while editing. Initialising it from
+  // `pot` at click-time (rather than mirroring pot via useEffect+setState)
+  // avoids the react-hooks/set-state-in-effect lint rule and removes a
+  // class of stale-closure bugs where an external pot update mid-edit
+  // would yank the value out from under the user.
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(String(pot));
+  const [draft, setDraft] = useState("");
 
-  useEffect(() => {
-    if (!editing) setDraft(String(pot));
-  }, [pot, editing]);
+  const startEdit = () => {
+    setDraft(String(pot));
+    setEditing(true);
+  };
 
   const commit = () => {
     const v = parseFloat(draft.replace(/[^\d.-]/g, ""));
@@ -274,10 +280,7 @@ function HeadlineCard({
             ) : (
               <button
                 type="button"
-                onClick={() => {
-                  setDraft(String(pot));
-                  setEditing(true);
-                }}
+                onClick={startEdit}
                 style={{
                   background: "transparent",
                   border: "none",
