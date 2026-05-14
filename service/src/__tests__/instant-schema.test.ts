@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import schema from "../instant-schema";
+import { bootstrapSeed } from "../setup/apply";
 
 // The schema object's internal shape is defined by @instantdb/admin —
 // we access `entities.<name>.attrs.<field>` and each attr has `valueType`,
@@ -115,6 +116,32 @@ describe("credits entity", () => {
   test("has amount (unlike failedPayments)", () => {
     expect(c.attrs.amount).toBeDefined();
     expect(c.attrs.amount.config.indexed).toBe(true);
+  });
+});
+
+describe("bootstrap seed coverage", () => {
+  // The applySetup bootstrap pass writes a stub row + then deletes it
+  // for each entity in bootstrapSeed, which forces InstantDB to create
+  // the attrs. Any schema entity that is queried before the user has
+  // written real data to it (e.g. mustPayItems from Layout's sidebar
+  // badge, or budgetPlans from /budgets) needs to be in this seed.
+  // Forgetting to add a new entity here is what triggered the Codex
+  // P1 finding on PR #51 — this test guards future schema additions.
+  test("every schema entity has a corresponding seed row", () => {
+    const entityNames = Object.keys(entities).sort();
+    const seededTables = bootstrapSeed().map((s) => s.table).sort();
+    for (const name of entityNames) {
+      expect(seededTables).toContain(name);
+    }
+  });
+
+  test("seed rows are unique per table — no double-write that would skip an entity", () => {
+    const seededTables = bootstrapSeed().map((s) => s.table);
+    const counts = new Map<string, number>();
+    for (const t of seededTables) counts.set(t, (counts.get(t) ?? 0) + 1);
+    for (const [name, n] of counts) {
+      expect(n).toBe(1);
+    }
   });
 });
 

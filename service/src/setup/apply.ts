@@ -70,8 +70,9 @@ function extract(values: FieldMap): ExtractedValues {
   };
 }
 
-/** Seed rows written during the bootstrap pass to force attribute creation. */
-function bootstrapSeed(): Array<{ table: string; data: Record<string, unknown> }> {
+/** Seed rows written during the bootstrap pass to force attribute creation.
+ *  Exported so tests can assert every schema entity has a seed row. */
+export function bootstrapSeed(): Array<{ table: string; data: Record<string, unknown> }> {
   const now = Date.now();
   return [
     {
@@ -141,6 +142,63 @@ function bootstrapSeed(): Array<{ table: string; data: Record<string, unknown> }
         syncedAt: now,
         bankSenderId: "TEST",
         rawMessage: "Setup schema push (credit)",
+      },
+    },
+    // Must Pay entities. mustPayItems is queried by Layout on every
+    // page mount (the sidebar pillBadge counter), so the attrs must
+    // exist before the first dashboard render or InstantDB will throw
+    // a missing-attribute error. mustPayState rides along on the same
+    // bootstrap pass.
+    {
+      table: "mustPayItems",
+      data: {
+        title: "__setup__",
+        amountGEL: 0,
+        isRecurring: false,
+        createdAt: now,
+        updatedAt: now,
+      },
+    },
+    {
+      table: "mustPayState",
+      data: {
+        key: "__setup__",
+        currentPotGEL: 0,
+        updatedAt: now,
+      },
+    },
+    // Three pre-existing entities that were never in the bootstrap
+    // seed but should have been from day one. Their attrs only got
+    // created lazily on first user write, which meant fresh installs
+    // could hit "missing attribute" errors on first visit to /budgets,
+    // /categories, or any page that reads merchant/transaction
+    // overrides. Adding them here makes the bootstrap exhaustive.
+    {
+      table: "budgetPlans",
+      data: {
+        planMonth: "0000-00",
+        expectedIncome: 0,
+        expectedIncomeAuto: true,
+        flexPool: 0,
+        flexPoolAuto: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    },
+    {
+      table: "merchantCategoryOverrides",
+      data: {
+        merchant: "__setup__",
+        categoryId: "__setup__",
+        createdAt: now,
+      },
+    },
+    {
+      table: "transactionCategoryOverrides",
+      data: {
+        paymentId: "__setup__",
+        categoryId: "__setup__",
+        createdAt: now,
       },
     },
   ];
