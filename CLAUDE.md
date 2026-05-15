@@ -460,6 +460,16 @@ gh release upload v0.X.Y \
 
 `scripts/release/release.sh` wraps all four steps if you want a one-shot.
 
+**Release-notes build marker (required).** Every GitHub release body MUST end with a hidden HTML comment carrying the build number:
+
+```
+<!-- build: 18 -->
+```
+
+The landing site's `src/pages/appcast.xml.ts::parseBuildNumber()` extracts this integer and emits it as `<sparkle:version>` so Sparkle's numeric comparison against the installed bundle's `CFBundleVersion` works correctly. Without the marker, the appcast falls back to the marketing version (e.g. `"0.6.0"`), which Sparkle splits as `[0, 6, 0]` and compares element-wise against the bundle's `CFBundleVersion` integer — the first element loses (`0 < 16`), so Sparkle decides the latest release is older than what's installed and shows "You're up to date" indefinitely. v0.6.0 surfaced this bug; every release v0.5.4+ has been retroactively backfilled with the marker.
+
+`scripts/release/build.sh` prints the exact marker line on completion so it's hard to forget — paste it into the `--notes-file` body before running `gh release create`. The marker is a hidden HTML comment, invisible in GitHub's markdown render, so it doesn't pollute the user-facing notes.
+
 ### 8.3 What `build.sh` actually does
 
 1. Validates `.release.env` exists and both `APP_IDENTITY` / `NOTARY_PROFILE` are set.

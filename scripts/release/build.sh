@@ -227,6 +227,20 @@ else
   EDDSA_FILE=""
 fi
 
+# Read BUILD_NUMBER from the same version.env that package_app.sh consumes
+# so the marker line below carries the exact integer Sparkle compares
+# against the installed bundle's CFBundleVersion. Falling back to a
+# placeholder if the file is missing rather than failing — the build
+# already succeeded by this point.
+BUILD_NUMBER_MARKER=""
+if [[ -f "$REPO_ROOT/app-menubar/version.env" ]]; then
+  # shellcheck disable=SC1090
+  BUILD_NUMBER_FROM_ENV=$(grep -E '^BUILD_NUMBER=' "$REPO_ROOT/app-menubar/version.env" | head -1 | cut -d= -f2)
+  if [[ -n "$BUILD_NUMBER_FROM_ENV" ]]; then
+    BUILD_NUMBER_MARKER="<!-- build: ${BUILD_NUMBER_FROM_ENV} -->"
+  fi
+fi
+
 log "Done."
 printf "\n  DMG:       %s\n" "$DMG"
 printf "  checksum:  %s\n" "$CHECKSUM"
@@ -234,4 +248,16 @@ if [[ -n "$EDDSA_FILE" ]]; then
   printf "  EdDSA:     %s\n" "$EDDSA_FILE"
 fi
 printf "  version:   %s\n" "$VERSION"
-printf "  tag:       %s (not yet pushed)\n\n" "$TAG"
+printf "  tag:       %s (not yet pushed)\n" "$TAG"
+if [[ -n "$BUILD_NUMBER_MARKER" ]]; then
+  # The landing's appcast generator parses this marker out of the
+  # GitHub release body and emits it as <sparkle:version> for Sparkle's
+  # numeric comparison against the installed CFBundleVersion. Without
+  # it, every existing user gets "You're up to date" forever (because
+  # Sparkle splits a marketing version like "0.6.0" into [0, 6, 0] and
+  # compares element-by-element against the bundle's integer build
+  # number, where the first 0 loses immediately).
+  printf "\n  Release-notes marker (paste into the GitHub release body):\n"
+  printf "      %s\n" "$BUILD_NUMBER_MARKER"
+fi
+printf "\n"
