@@ -45,7 +45,9 @@ export function Dashboard() {
   const prevMonthName = prevPeriod.label;
   const prevMonthShort = prevPeriod.label.split(" ")[0]; // "Mar 2026" → "Mar", "Mar 1 – 31" → "Mar"
   const monthYearLabel = range.label;
-  const monthShortName = range.label.split(" ")[0].toUpperCase();
+  const monthShortName = range.key === "Cycle"
+    ? "CYCLE"
+    : range.label.split(" ")[0].toUpperCase();
   const income = monthCredits.total;
   const net = income - stats.total;
   const savingsRate = income > 0 ? (net / income) * 100 : 0;
@@ -81,7 +83,9 @@ export function Dashboard() {
   }, [payments, getCategory, range]);
 
   const topCats = byCategory.slice(0, 5);
-  const totalCatSum = topCats.reduce((s, c) => s + c.total, 0) || 1;
+  // Denominator is all-categories total so percentages reflect actual
+  // share of total spend, not just share-of-top-5.
+  const totalCatSum = byCategory.reduce((s, c) => s + c.total, 0) || 1;
 
   // Recent transactions (payments + failed + credits mixed, newest first)
   const recent: InkTx[] = useMemo(() => {
