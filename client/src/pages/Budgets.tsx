@@ -258,7 +258,10 @@ function BucketStrip({
       }}
     >
       {items.map((it) => {
-        const pct = it.target > 0 ? Math.min(100, (it.actual / it.target) * 100) : 0;
+        const rawPct = it.target > 0 ? (it.actual / it.target) * 100 : 0;
+        const barPct = Math.min(100, rawPct);
+        const isOver = rawPct > 100;
+        const overBy = it.actual - it.target;
         return (
           <Card key={it.label} pad="16px 18px" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -266,9 +269,10 @@ function BucketStrip({
               <span
                 style={{
                   fontSize: 11,
-                  color: T.dim,
+                  color: isOver ? T.accent : T.dim,
                   fontFamily: T.mono,
                   fontVariantNumeric: "tabular-nums",
+                  fontWeight: isOver ? 600 : undefined,
                 }}
               >
                 ₾{Math.round(it.actual)} / ₾{Math.round(it.target)}
@@ -277,15 +281,23 @@ function BucketStrip({
             <div style={{ height: 6, background: T.panelAlt, borderRadius: 3, overflow: "hidden" }}>
               <div
                 style={{
-                  width: `${pct}%`,
+                  width: `${barPct}%`,
                   height: "100%",
-                  background: it.color,
+                  background: isOver ? T.accent : it.color,
                   transition: "width 200ms ease-out",
                 }}
               />
             </div>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>
-              {pct.toFixed(0)}% used
+            <div style={{ fontSize: 10, fontFamily: T.mono, display: "flex", gap: 6, alignItems: "center" }}>
+              {isOver ? (
+                <>
+                  <span style={{ color: T.accent, fontWeight: 600 }}>{rawPct.toFixed(0)}% used</span>
+                  <span style={{ color: T.muted }}>·</span>
+                  <span style={{ color: T.accent }}>₾{Math.round(overBy)} over budget</span>
+                </>
+              ) : (
+                <span style={{ color: T.muted }}>{rawPct.toFixed(0)}% used</span>
+              )}
             </div>
           </Card>
         );
