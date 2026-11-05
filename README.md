@@ -76,7 +76,7 @@ cd service && bun run start
 cd service && bun run install-service
 ```
 
-**Send each transaction to a webhook (optional):**
+**Send each transaction to a webhook (optional):** open Settings → Webhook in the dashboard, paste the URL and secret, then click Send test. Or use the CLI:
 
 ```bash
 cd service
@@ -84,7 +84,7 @@ bun run src/cli.ts set-webhook https://example.com/hook --secret <token>
 bun run src/cli.ts test-webhook
 ```
 
-Then restart Xarji. Each new transaction is POSTed as one `xarji.payment/v1` JSON event with `Authorization: Bearer <token>`. The raw SMS text is never sent. CLAUDE.md §4.7 has the full schema and retry rules.
+After a CLI change, restart Xarji. Each new transaction is POSTed as one `xarji.payment/v1` JSON event with `Authorization: Bearer <token>`. The raw SMS text is never sent. CLAUDE.md §4.7 has the full schema and retry rules.
 
 **Other commands:**
 

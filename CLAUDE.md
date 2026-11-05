@@ -198,6 +198,9 @@ API surface (all under `/api/`):
 | `/api/setup` | GET | serialized schema + current values (admin token blanked) |
 | `/api/setup` | POST | runs `applySetup`, hot-swaps the service into the configured state in-place |
 | `/api/preview` | POST | read-only sampler: given senders, returns per-bank counts + sample transactions. Distinguishes `full-disk-access` vs `messages-db-missing` vs `internal` error kinds. |
+| `/api/webhook` | GET | `{ enabled, url, hasSecret }`. The secret is never sent back. |
+| `/api/webhook` | POST | `{ url, secret? }` from Settings. Empty `url` turns it off. Empty `secret` keeps the saved one. Applies without a restart. Origin-checked. |
+| `/api/webhook/test` | POST | sends `xarji.test/v1` to the saved URL, returns `{ ok, status }`. Origin-checked. |
 
 Static assets: served from `CLIENT_ASSETS` when populated (compiled binary), or from `client/dist/` on disk otherwise. HTML entries (`/`, `*.html`) get runtime config injected — see §4.4.
 
@@ -264,7 +267,9 @@ Delivery rules (`sync.ts::deliverWebhookQueue`):
 - 2xx: delivered. 408, 429, 5xx or a network error: stop the pass and back off (30s, doubling to 15 min). Any other 4xx: logged and dropped, so one bad event can't block the queue.
 - Only transactions parsed while the webhook is enabled are queued. Turning it on later doesn't replay history.
 
-Configure from the repo:
+Configure it in the dashboard: Settings → Webhook (URL, secret, Send test). A save applies at once, without a restart. `parseWebhookUpdate` in `sync.ts` turns the form into config.
+
+Or from the repo:
 
 ```
 cd service
@@ -272,7 +277,7 @@ bun run src/cli.ts set-webhook <url> --secret <value>   # webhook.url + Authoriz
 bun run src/cli.ts test-webhook                          # POSTs {"schema":"xarji.test/v1","test":true,…}
 ```
 
-The secret lives in `webhook.headers` in `config.json`, next to the InstantDB admin token. The service reads config at start, so restart Xarji (quit from the menu bar, reopen) after changing it.
+The secret lives in `webhook.headers` in `config.json`, next to the InstantDB admin token. The service reads config at start, so after a CLI change restart Xarji (quit from the menu bar, reopen).
 
 ---
 
