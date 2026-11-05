@@ -6,11 +6,14 @@ import {
   CONFIG_DIR,
   LAUNCHD_PLIST_PATH,
   defaultConfig,
+  loadConfig,
+  patchConfig,
   saveConfig,
 } from "./config";
 import { MessagesDbReader } from "./db-reader";
 import { parseMessages } from "./parser";
 import { StateDb, ensureStateDbDir } from "./state-db";
+import { sendWebhook } from "./sync";
 import * as tui from "./tui";
 
 const SERVICE_NAME = "com.xarji";
@@ -362,21 +365,52 @@ async function test(): Promise<void> {
 /**
  * Configure webhook
  */
-async function configureWebhook(url: string): Promise<void> {
-  console.log("Configuring webhook...\n");
+async function configureWebhook(url: string, secret?: string): Promise<void> {
+  // patchConfig on a missing file would write a default config and make
+  // the install look configured without InstantDB credentials.
+  if (!existsSync(join(CONFIG_DIR, "config.json"))) {
+    console.log("Finish onboarding first: ~/.xarji/config.json does not exist yet.");
+    process.exit(1);
+  }
 
-  await saveConfig({
+  await patchConfig({
     webhook: {
       enabled: true,
       url,
-      headers: { "Content-Type": "application/json" },
+      ...(secret ? { headers: { Authorization: `Bearer ${secret}` } } : {}),
     },
   });
 
   console.log(`Webhook URL set to: ${url}`);
-  console.log("\nRestart the service to apply changes:");
+  if (secret) console.log("Secret saved as the Authorization: Bearer header.");
+  console.log("\nRestart Xarji to apply: quit it from the menu bar and open it again.");
+  console.log("If you run the launchd service from `install` instead:");
   console.log("  launchctl unload " + LAUNCHD_PLIST_PATH);
   console.log("  launchctl load " + LAUNCHD_PLIST_PATH);
+}
+
+async function testWebhook(): Promise<void> {
+  const { webhook } = loadConfig();
+  if (!webhook.url) {
+    console.log("No webhook URL configured. Run: bun run src/cli.ts set-webhook <url> --secret <value>");
+    process.exit(1);
+  }
+
+  const body = JSON.stringify({
+    schema: "xarji.test/v1",
+    test: true,
+    source: "xarji",
+    receivedAt: new Date().toISOString(),
+  });
+
+  try {
+    const status = await sendWebhook(webhook, body);
+    console.log(`POST ${webhook.url} -> HTTP ${status}`);
+    if (status < 200 || status >= 300) process.exit(1);
+  } catch (error) {
+    console.log(`POST ${webhook.url} failed: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
 }
 
 /**
@@ -422,11 +456,15 @@ switch (command) {
     break;
 
   case "set-webhook":
-    if (args[1]) {
-      await configureWebhook(args[1]);
+    if (args[1] && (args[2] === undefined || (args[2] === "--secret" && args[3]))) {
+      await configureWebhook(args[1], args[3]);
     } else {
-      console.log("Usage: bun run src/cli.ts set-webhook <url>");
+      console.log("Usage: bun run src/cli.ts set-webhook <url> [--secret <value>]");
     }
+    break;
+
+  case "test-webhook":
+    await testWebhook();
     break;
 
   case "set-instantdb":
@@ -447,6 +485,7 @@ switch (command) {
     console.log("  bun run src/cli.ts uninstall                       Remove the service");
     console.log("  bun run src/cli.ts status                          Show service status");
     console.log("  bun run src/cli.ts test                            Test message parsing");
-    console.log("  bun run src/cli.ts set-webhook <url>               Configure webhook URL");
+    console.log("  bun run src/cli.ts set-webhook <url> [--secret <value>]  Configure webhook URL + Bearer secret");
+    console.log("  bun run src/cli.ts test-webhook                    Send a test event to the webhook");
     console.log("  bun run src/cli.ts set-instantdb <app-id> <token>  Configure InstantDB");
 }
