@@ -2,11 +2,11 @@ import { watch } from "fs";
 import { MessagesDbReader } from "./db-reader";
 import { parseMessages } from "./parser";
 import { StateDb, ensureStateDbDir } from "./state-db";
-import { syncAllTargets, initSyncTargets } from "./sync";
+import { syncAllTargets, initSyncTargets, buildWebhookEvent, deliverWebhookQueue } from "./sync";
 import { defaultConfig, type Config } from "./config";
 import { closeInstantDB, isConnected as isInstantDBConnected } from "./instant-sync";
 
-export type SyncTargetName = "local" | "webhook" | "instantdb";
+export type SyncTargetName = "local" | "instantdb";
 
 export interface SyncFailure {
   sender: string;
@@ -34,6 +34,10 @@ export class ExpenseTrackerService {
   private isProcessing = false;
   private lastProcessTime = 0;
   private debounceMs = 2000; // Debounce file changes
+  // Retry delay for a failing webhook. Doubles per failure up to 15
+  // minutes and resets on the next successful delivery.
+  private webhookBackoffMs = 0;
+  private nextWebhookAttemptAt = 0;
 
   constructor(config: Config = defaultConfig) {
     this.config = config;
@@ -62,9 +66,12 @@ export class ExpenseTrackerService {
    * Returns the count of transactions that landed in every enabled
    * target plus any per-target failures. The cursor (`last_message_id`)
    * only advances when ALL enabled targets succeeded for a batch — a
-   * transient InstantDB or webhook failure now causes a retry on the
-   * next run instead of silently leaving those messages out of the
-   * destination forever.
+   * transient InstantDB failure now causes a retry on the next run
+   * instead of silently leaving those messages out of the destination
+   * forever. The webhook is not a cursor target: events go to a durable
+   * queue in state.db and are delivered after the loop, so a down
+   * receiver never holds the cursor and an InstantDB failure never
+   * holds the webhook.
    */
   async processNewMessages(): Promise<SyncOutcome> {
     if (this.isProcessing) {
@@ -135,7 +142,17 @@ export class ExpenseTrackerService {
             continue;
           }
 
-          // Sync to all targets (local, webhook, InstantDB). Pass stateDb
+          if (this.webhookEnabled()) {
+            for (const tx of newTransactions) {
+              this.stateDb!.enqueueWebhookEvent(
+                tx.id,
+                tx.transactionDate,
+                JSON.stringify(buildWebhookEvent(tx))
+              );
+            }
+          }
+
+          // Sync to local + InstantDB. Pass stateDb
           // so the InstantDB dedup path can union user tombstones into
           // its skip set; without this, deleted transactions would
           // re-import on the next sync.
@@ -143,15 +160,9 @@ export class ExpenseTrackerService {
 
           // Determine which targets are enabled, then collect failures.
           // Local file is always enabled (it's the failsafe backup).
-          // Webhook and InstantDB are config-gated.
+          // InstantDB is config-gated.
           const targetChecks: Array<{ target: SyncTargetName; enabled: boolean; success: boolean; error?: string }> = [
             { target: "local", enabled: true, success: syncResults.local.success, error: syncResults.local.error },
-            {
-              target: "webhook",
-              enabled: this.config.webhook.enabled && !!this.config.webhook.url,
-              success: syncResults.webhook.success,
-              error: syncResults.webhook.error,
-            },
             {
               target: "instantdb",
               enabled: this.config.instantdb.enabled,
@@ -208,6 +219,8 @@ export class ExpenseTrackerService {
       }
 
       reader.close();
+
+      await this.deliverWebhook();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("[Service] Error in processNewMessages:", error);
@@ -217,6 +230,23 @@ export class ExpenseTrackerService {
     }
 
     return { synced: totalNewTransactions, failures };
+  }
+
+  private webhookEnabled(): boolean {
+    return this.config.webhook.enabled && !!this.config.webhook.url;
+  }
+
+  private async deliverWebhook(): Promise<void> {
+    if (!this.webhookEnabled() || Date.now() < this.nextWebhookAttemptAt) return;
+
+    const result = await deliverWebhookQueue(this.stateDb!, this.config.webhook);
+    if (result.success) {
+      this.webhookBackoffMs = 0;
+      this.nextWebhookAttemptAt = 0;
+      return;
+    }
+    this.webhookBackoffMs = Math.min(Math.max(this.webhookBackoffMs * 2, 30_000), 15 * 60_000);
+    this.nextWebhookAttemptAt = Date.now() + this.webhookBackoffMs;
   }
 
   /**

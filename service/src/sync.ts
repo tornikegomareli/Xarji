@@ -74,60 +74,89 @@ export async function syncToLocalFile(
   }
 }
 
+export const WEBHOOK_TIMEOUT_MS = 10_000;
+
 /**
- * Send transactions to webhook endpoint
+ * One `xarji.payment/v1` event per transaction. `rawMessage` is left out
+ * on purpose: the SMS text carries balances and card details the
+ * receiver doesn't need.
  */
-export async function syncToWebhook(
-  transactions: Transaction[],
-  config: Config["webhook"]
+export function buildWebhookEvent(tx: Transaction, receivedAt: Date = new Date()) {
+  return {
+    schema: "xarji.payment/v1",
+    source: "xarji",
+    eventId: tx.id,
+    receivedAt: receivedAt.toISOString(),
+    transaction: {
+      id: tx.id,
+      messageId: tx.messageId,
+      bankKey: tx.bankKey,
+      bankSenderId: tx.bankSenderId,
+      kind: tx.transactionType,
+      status: tx.status,
+      direction: tx.direction,
+      amount: tx.amount,
+      currency: tx.currency,
+      merchant: tx.merchant,
+      counterparty: tx.counterparty,
+      cardLastDigits: tx.cardLastDigits,
+      balance: tx.balance,
+      failureReason: tx.failureReason,
+      transactionDate: tx.transactionDate.toISOString(),
+      messageTimestamp: tx.messageTimestamp.toISOString(),
+    },
+  };
+}
+
+/** POSTs one JSON body. Returns the HTTP status; throws on network error or timeout. */
+export async function sendWebhook(webhook: Config["webhook"], body: string): Promise<number> {
+  const response = await fetch(webhook.url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...webhook.headers },
+    body,
+    signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
+  });
+  return response.status;
+}
+
+/**
+ * Delivers queued events oldest first. Stops at the first retryable
+ * failure (network, timeout, 408, 429, 5xx) so events never arrive out
+ * of order. Any other non-2xx status will not succeed on retry, so the
+ * event is logged and dropped to keep it from blocking the queue.
+ */
+export async function deliverWebhookQueue(
+  stateDb: import("./state-db").StateDb,
+  webhook: Config["webhook"]
 ): Promise<SyncResult> {
-  if (!config.enabled || !config.url) {
-    return { success: true }; // Webhook disabled, consider success
-  }
-
-  if (transactions.length === 0) {
-    return { success: true };
-  }
-
-  try {
-    const payload = {
-      timestamp: new Date().toISOString(),
-      transactionCount: transactions.length,
-      transactions: transactions.map((t) => ({
-        id: t.id,
-        type: t.transactionType,
-        amount: t.amount,
-        currency: t.currency,
-        merchant: t.merchant,
-        cardLastDigits: t.cardLastDigits,
-        transactionDate: t.transactionDate.toISOString(),
-        messageTimestamp: t.messageTimestamp.toISOString(),
-        plusEarned: t.plusEarned,
-        plusTotal: t.plusTotal,
-      })),
-    };
-
-    const response = await fetch(config.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...config.headers,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`HTTP ${response.status}: ${text}`);
+  let delivered = 0;
+  for (const event of stateDb.pendingWebhookEvents()) {
+    let status: number;
+    try {
+      status = await sendWebhook(webhook, event.payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[Webhook] ${event.eventId}: ${message} — will retry`);
+      return { success: false, syncedCount: delivered, error: message };
     }
 
-    console.log(`[Webhook] Sent ${transactions.length} transactions to ${config.url}`);
-    return { success: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[Webhook] Error: ${message}`);
-    return { success: false, error: message };
+    if (status >= 200 && status < 300) {
+      stateDb.markWebhookDelivered(event.eventId);
+      delivered++;
+      continue;
+    }
+
+    if (status === 408 || status === 429 || status >= 500) {
+      console.error(`[Webhook] ${event.eventId}: HTTP ${status} — will retry`);
+      return { success: false, syncedCount: delivered, error: `HTTP ${status}` };
+    }
+
+    console.error(`[Webhook] Dropping ${event.eventId}: HTTP ${status} is not retryable`);
+    stateDb.markWebhookDelivered(event.eventId);
   }
+
+  if (delivered > 0) console.log(`[Webhook] Delivered ${delivered} event(s) to ${webhook.url}`);
+  return { success: true, syncedCount: delivered };
 }
 
 /**
@@ -180,25 +209,11 @@ export async function syncAllTargets(
   config: Config,
   bankSenderId: string = "SOLO",
   stateDb?: import("./state-db").StateDb
-): Promise<{ local: SyncResult; webhook: SyncResult; instantdb: SyncResult }> {
-  const [local, webhook, instantdb] = await Promise.all([
+): Promise<{ local: SyncResult; instantdb: SyncResult }> {
+  const [local, instantdb] = await Promise.all([
     syncToLocalFile(transactions, config.localBackupPath),
-    syncToWebhook(transactions, config.webhook),
     syncToInstant(transactions, config, bankSenderId, stateDb),
   ]);
 
-  return { local, webhook, instantdb };
-}
-
-// Keep old function for backward compatibility
-export async function syncTransactions(
-  transactions: Transaction[],
-  config: Config
-): Promise<{ local: SyncResult; webhook: SyncResult }> {
-  const [local, webhook] = await Promise.all([
-    syncToLocalFile(transactions, config.localBackupPath),
-    syncToWebhook(transactions, config.webhook),
-  ]);
-
-  return { local, webhook };
+  return { local, instantdb };
 }
