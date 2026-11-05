@@ -33,6 +33,7 @@ import { patchConfig, CONFIG_PATH } from "./config";
 import { getProvider, serialiseEvent } from "./ai";
 import type { AIProviderId, AIStreamRequest } from "./ai/types";
 import { deleteTransaction } from "./instant-sync";
+import { buildTestEvent, parseWebhookUpdate, sendWebhook } from "./sync";
 
 export interface HttpServerOptions {
   port: number;
@@ -242,6 +243,15 @@ function redactConfig(config: Config): Record<string, unknown> {
       enabled: config.webhook.enabled,
       url: config.webhook.url,
     },
+  };
+}
+
+/** Settings view of the webhook. The secret is never sent back. */
+function webhookView(config: Config) {
+  return {
+    enabled: config.webhook.enabled,
+    url: config.webhook.url,
+    hasSecret: !!config.webhook.headers?.Authorization,
   };
 }
 
@@ -489,6 +499,41 @@ export function startHttpServer(opts: HttpServerOptions): HttpServerHandle {
           return json({ ok: false, error: String(err), errorKind: "internal" }, { status: 500 });
         }
       }
+      if (path === "/api/webhook" && req.method === "GET") {
+        return json(webhookView(opts.config));
+      }
+
+      // Both POSTs need the Origin check: a page that could change the
+      // URL could send every new transaction to itself.
+      if (path === "/api/webhook" && req.method === "POST") {
+        const csrf = assertSafeOrigin(req);
+        if (csrf) return csrf;
+        if (!opts.configured) return json({ error: "Finish onboarding first" }, { status: 409 });
+        let body: { url?: unknown; secret?: unknown };
+        try {
+          body = (await req.json()) as { url?: unknown; secret?: unknown };
+        } catch {
+          return json({ error: "Body must be valid JSON" }, { status: 400 });
+        }
+        const update = parseWebhookUpdate(opts.config.webhook, body);
+        if (!update.ok) return json({ error: update.error }, { status: 400 });
+        opts.config = await patchConfig({ webhook: update.webhook });
+        opts.service?.setWebhook(opts.config.webhook);
+        return json(webhookView(opts.config));
+      }
+
+      if (path === "/api/webhook/test" && req.method === "POST") {
+        const csrf = assertSafeOrigin(req);
+        if (csrf) return csrf;
+        if (!opts.config.webhook.url) return json({ error: "Save a webhook URL first" }, { status: 400 });
+        try {
+          const status = await sendWebhook(opts.config.webhook, JSON.stringify(buildTestEvent()));
+          return json({ ok: status >= 200 && status < 300, status });
+        } catch (err) {
+          return json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+
       if (path === "/api/ai/keys" && req.method === "GET") {
         // Boolean presence only — never echo the key value back.
         const keys = opts.config.aiProviderKeys ?? {};

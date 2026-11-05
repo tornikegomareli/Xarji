@@ -13,7 +13,7 @@ import {
 import { MessagesDbReader } from "./db-reader";
 import { parseMessages } from "./parser";
 import { StateDb, ensureStateDbDir } from "./state-db";
-import { sendWebhook } from "./sync";
+import { buildTestEvent, sendWebhook } from "./sync";
 import * as tui from "./tui";
 
 const SERVICE_NAME = "com.xarji";
@@ -396,12 +396,7 @@ async function testWebhook(): Promise<void> {
     process.exit(1);
   }
 
-  const body = JSON.stringify({
-    schema: "xarji.test/v1",
-    test: true,
-    source: "xarji",
-    receivedAt: new Date().toISOString(),
-  });
+  const body = JSON.stringify(buildTestEvent());
 
   try {
     const status = await sendWebhook(webhook, body);

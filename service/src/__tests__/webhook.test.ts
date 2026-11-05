@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { StateDb } from "../state-db";
-import { buildWebhookEvent, deliverWebhookQueue } from "../sync";
+import { buildWebhookEvent, deliverWebhookQueue, parseWebhookUpdate } from "../sync";
 import type { Transaction } from "../parser";
 
 const webhook = {
@@ -170,5 +170,37 @@ describe("deliverWebhookQueue", () => {
     expect(result).toEqual({ success: true, syncedCount: 1 });
     expect(sentIds()).toEqual(["bad", "good"]);
     expect(db.pendingWebhookEvents()).toEqual([]);
+  });
+});
+
+describe("parseWebhookUpdate", () => {
+  const saved = { enabled: true, url: "https://old.example/hook", headers: { Authorization: "Bearer old" } };
+
+  test("saves a URL and a secret as the Bearer header", () => {
+    expect(parseWebhookUpdate(saved, { url: " https://bot.example/hook ", secret: " s3cret " })).toEqual({
+      ok: true,
+      webhook: { enabled: true, url: "https://bot.example/hook", headers: { Authorization: "Bearer s3cret" } },
+    });
+  });
+
+  test("accepts a pasted 'Bearer <secret>' value", () => {
+    const result = parseWebhookUpdate(saved, { url: "https://bot.example/hook", secret: "Bearer s3cret" });
+    expect(result.ok && result.webhook.headers).toEqual({ Authorization: "Bearer s3cret" });
+  });
+
+  test("keeps the saved secret when the secret field is empty", () => {
+    const result = parseWebhookUpdate(saved, { url: "https://new.example/hook", secret: "" });
+    expect(result.ok && result.webhook.headers).toEqual({ Authorization: "Bearer old" });
+  });
+
+  test("an empty URL turns the webhook off and drops the secret", () => {
+    expect(parseWebhookUpdate(saved, { url: "" })).toEqual({
+      ok: true,
+      webhook: { enabled: false, url: "", headers: {} },
+    });
+  });
+
+  test.each(["not a url", "ftp://bot.example/hook", "javascript:alert(1)"])("rejects %p", (url) => {
+    expect(parseWebhookUpdate(saved, { url }).ok).toBe(false);
   });
 });

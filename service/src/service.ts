@@ -232,6 +232,13 @@ export class ExpenseTrackerService {
     return { synced: totalNewTransactions, failures };
   }
 
+  /** Applies a webhook saved from Settings without a restart. */
+  setWebhook(webhook: Config["webhook"]): void {
+    this.config = { ...this.config, webhook };
+    this.webhookBackoffMs = 0;
+    this.nextWebhookAttemptAt = 0;
+  }
+
   private webhookEnabled(): boolean {
     return this.config.webhook.enabled && !!this.config.webhook.url;
   }

@@ -108,6 +108,39 @@ export function buildWebhookEvent(tx: Transaction, receivedAt: Date = new Date()
   };
 }
 
+export function buildTestEvent(receivedAt: Date = new Date()) {
+  return { schema: "xarji.test/v1", test: true, source: "xarji", receivedAt: receivedAt.toISOString() };
+}
+
+/**
+ * Turns the Settings form `{ url, secret }` into the webhook config to
+ * save. An empty URL turns the webhook off and drops the secret. An
+ * empty secret keeps the saved one, so the user can change the URL
+ * without pasting the secret again.
+ */
+export function parseWebhookUpdate(
+  current: Config["webhook"],
+  body: { url?: unknown; secret?: unknown }
+): { ok: true; webhook: Config["webhook"] } | { ok: false; error: string } {
+  const url = typeof body.url === "string" ? body.url.trim() : "";
+  if (!url) return { ok: true, webhook: { enabled: false, url: "", headers: {} } };
+
+  let protocol: string;
+  try {
+    protocol = new URL(url).protocol;
+  } catch {
+    return { ok: false, error: "URL is not valid" };
+  }
+  if (protocol !== "https:" && protocol !== "http:") {
+    return { ok: false, error: "URL must start with https:// or http://" };
+  }
+
+  // People often paste the whole header value.
+  const secret = typeof body.secret === "string" ? body.secret.trim().replace(/^bearer\s+/i, "") : "";
+  const headers = secret ? { Authorization: `Bearer ${secret}` } : (current.headers ?? {});
+  return { ok: true, webhook: { enabled: true, url, headers } };
+}
+
 /** POSTs one JSON body. Returns the HTTP status; throws on network error or timeout. */
 export async function sendWebhook(webhook: Config["webhook"], body: string): Promise<number> {
   const response = await fetch(webhook.url, {
