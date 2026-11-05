@@ -123,7 +123,41 @@ export class StateDb {
         kind TEXT NOT NULL,
         deleted_at TEXT NOT NULL
       );
+
+      -- Outgoing webhook events. Delivered rows stay (delivered_at set)
+      -- so re-enqueueing a transaction from a batch held back by an
+      -- InstantDB failure is a no-op instead of a duplicate POST.
+      CREATE TABLE IF NOT EXISTS webhook_queue (
+        event_id TEXT PRIMARY KEY,
+        transaction_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        delivered_at TEXT
+      );
     `);
+  }
+
+  enqueueWebhookEvent(eventId: string, transactionDate: Date, payload: string): void {
+    this.db
+      .query(
+        "INSERT OR IGNORE INTO webhook_queue (event_id, transaction_date, payload) VALUES (?, ?, ?)"
+      )
+      .run(eventId, transactionDate.toISOString(), payload);
+  }
+
+  pendingWebhookEvents(): Array<{ eventId: string; payload: string }> {
+    return this.db
+      .query(
+        `SELECT event_id AS eventId, payload FROM webhook_queue
+         WHERE delivered_at IS NULL
+         ORDER BY transaction_date, event_id`
+      )
+      .all() as Array<{ eventId: string; payload: string }>;
+  }
+
+  markWebhookDelivered(eventId: string): void {
+    this.db
+      .query("UPDATE webhook_queue SET delivered_at = ? WHERE event_id = ?")
+      .run(new Date().toISOString(), eventId);
   }
 
   /**
