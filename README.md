@@ -76,7 +76,7 @@ cd service && bun run start
 cd service && bun run install-service
 ```
 
-**Send each transaction to a webhook (optional):** open Settings → Webhook in the dashboard, paste the URL and secret, then click Send test. Or use the CLI:
+**Send each transaction to a webhook (optional):** open Manage → Webhook in the dashboard, paste the URL and secret, then click Send test. Or use the CLI:
 
 ```bash
 cd service

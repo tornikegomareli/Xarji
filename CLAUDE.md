@@ -267,7 +267,7 @@ Delivery rules (`sync.ts::deliverWebhookQueue`):
 - 2xx: delivered. 408, 429, 5xx or a network error: stop the pass and back off (30s, doubling to 15 min). Any other 4xx: logged and dropped, so one bad event can't block the queue.
 - Only transactions parsed while the webhook is enabled are queued. Turning it on later doesn't replay history.
 
-Configure it in the dashboard: Settings → Webhook (URL, secret, Send test). A save applies at once, without a restart. `parseWebhookUpdate` in `sync.ts` turns the form into config.
+Configure it in the dashboard: Manage → Webhook (URL, secret, Send test). A save applies at once, without a restart. `parseWebhookUpdate` in `sync.ts` turns the form into config.
 
 Or from the repo:
 
