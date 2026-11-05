@@ -87,7 +87,7 @@ Key invariant: the **three processes never share secrets directly**. The Instant
 │       ├── state-db.ts           ← ~/.xarji/state.db (cursor + dedup)
 │       ├── parser.ts             ← parser registry + parseMessage() dispatch
 │       ├── parsers/              ← per-bank regex parsers (solo.ts, tbc.ts, …)
-│       ├── sync.ts               ← fan-out to local JSON + InstantDB + webhook
+│       ├── sync.ts               ← fan-out to local JSON + InstantDB; webhook queue delivery
 │       ├── instant-sync.ts       ← @instantdb/admin client wrapper
 │       ├── instant-schema.ts     ← schema definition for payments/failedPayments/credits/…
 │       ├── push-schema.ts        ← one-shot: push schema to InstantDB
@@ -235,6 +235,44 @@ This:
 3. Compiles `service/src/index.ts` into `service/dist/xarji` (~60 MB).
 
 `client-assets.ts` is a committed stub (empty `CLIENT_ASSETS: Record<string, string> = {}`). The build overwrites it; `git checkout` restores the stub. Never commit the generated form.
+
+### 4.7 Webhook (`xarji.payment/v1`)
+
+Optional. Off until `config.json` has `webhook.enabled: true` and a `webhook.url`. Every new transaction becomes one POST:
+
+```json
+{
+  "schema": "xarji.payment/v1",
+  "source": "xarji",
+  "eventId": "<transaction id>",
+  "receivedAt": "<ISO time Xarji parsed it>",
+  "transaction": {
+    "id", "messageId", "bankKey", "bankSenderId", "kind", "status", "direction",
+    "amount", "currency", "merchant", "counterparty", "cardLastDigits", "balance",
+    "failureReason", "transactionDate", "messageTimestamp"
+  }
+}
+```
+
+Missing fields are `null`. `kind` is the `TransactionKind`. `rawMessage` is never sent. `eventId` is stable, so a receiver can dedup on it.
+
+Delivery rules (`sync.ts::deliverWebhookQueue`):
+
+- Events go into the `webhook_queue` table in `state.db` **before** the InstantDB sync. Enqueue is `INSERT OR IGNORE` and delivered rows stay, so a batch held back by an InstantDB failure doesn't send twice.
+- The webhook is not a cursor target. A down receiver never holds `last_message_id`.
+- Delivery runs after each sync pass, oldest `transactionDate` first, 10s timeout per request.
+- 2xx: delivered. 408, 429, 5xx or a network error: stop the pass and back off (30s, doubling to 15 min). Any other 4xx: logged and dropped, so one bad event can't block the queue.
+- Only transactions parsed while the webhook is enabled are queued. Turning it on later doesn't replay history.
+
+Configure from the repo:
+
+```
+cd service
+bun run src/cli.ts set-webhook <url> --secret <value>   # webhook.url + Authorization: Bearer <value>
+bun run src/cli.ts test-webhook                          # POSTs {"schema":"xarji.test/v1","test":true,…}
+```
+
+The secret lives in `webhook.headers` in `config.json`, next to the InstantDB admin token. The service reads config at start, so restart Xarji (quit from the menu bar, reopen) after changing it.
 
 ---
 
