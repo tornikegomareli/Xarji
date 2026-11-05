@@ -6,6 +6,7 @@ import { useDeleteAllData } from "../hooks/useDeleteAllData";
 import { usePayments, useFailedPayments } from "../hooks/useTransactions";
 import { useCredits } from "../hooks/useCredits";
 import { SettingsAISection } from "../components/SettingsAISection";
+import { SettingsWebhookSection } from "../components/SettingsWebhookSection";
 
 export function Settings() {
   const T = useTheme();
@@ -129,6 +130,8 @@ export function Settings() {
       <PageHeader eyebrow="Settings · preferences · data" title="Manage" ranges={null} />
 
       <SettingsAISection />
+
+      <SettingsWebhookSection />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: T.density.gap }}>
         <Section
