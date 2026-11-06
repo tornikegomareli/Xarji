@@ -18,6 +18,12 @@ Your data never touches third-party servers — everything runs locally on your 
 Messages.app → xarji service (parses SMS) → InstantDB (your account) → xarji client (dashboard)
 ```
 
+For an optional **local-only TBC mode** with private SQLite, an authenticated
+loopback dashboard and a separate read-only agent API, see [local/README.md](local/README.md).
+It requires no InstantDB account or bank API credentials and starts with Messages
+access disabled. Existing cloud setup instructions below remain unchanged.
+Recognised OTP/security messages are excluded in both local and cloud parsing.
+
 ## Supported Banks
 
 - Bank of Georgia / Solo

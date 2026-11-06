@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { db } from "../lib/instant";
-import { id } from "@instantdb/react";
+import { id } from "../lib/local-mode";
 
 export function useBankSenders() {
   const { data, isLoading, error } = db.useQuery({ bankSenders: {} });

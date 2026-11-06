@@ -23,7 +23,7 @@
 // in dev, so writes against `?demo=1` mutate the in-memory store and
 // never touch the user's real InstantDB app.
 
-import { id } from "@instantdb/react";
+import { id } from "../../../lib/local-mode";
 import { db } from "../../instant";
 import { pickCategoryDefaults } from "../../categoryDefaults";
 import type { AITool } from "./types";

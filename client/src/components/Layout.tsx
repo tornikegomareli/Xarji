@@ -1,3 +1,6 @@
+import { LOCAL_ONLY } from "../lib/local-mode";
+import { LocalAccess } from "./LocalAccess";
+import { useLocalDataStatus } from "../lib/local-db";
 import { useEffect, useMemo, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "../ink/Sidebar";
@@ -23,7 +26,25 @@ import {
   readSetupTransitionFlag,
 } from "../pages/Onboarding";
 
-export function Layout() {
+export function Layout() { return LOCAL_ONLY ? <LocalLayout /> : <CloudLayout />; }
+
+function LocalLayout() {
+  const [tweaks, setTweaks] = useState<InkTweaks>(() => loadTweaks());
+  const theme = useMemo(() => buildTheme(tweaks), [tweaks]);
+  useEffect(() => { saveTweaks(tweaks); }, [tweaks]);
+  return <TweaksContext.Provider value={{ tweaks, setTweaks }}><ThemeContext.Provider value={theme}><LocalAccess><ConfiguredShell /></LocalAccess></ThemeContext.Provider></TweaksContext.Provider>;
+}
+
+function LocalLedgerNotice() {
+  const T = useTheme();
+  const status = useLocalDataStatus();
+  const health = useHealth();
+  const metadata = health.data as (typeof health.data & { demo?: boolean; messages?: { enabled: boolean; error: string | null } });
+  const source = metadata?.messages?.error ? "Messages unavailable; automatic import paused." : metadata?.messages?.enabled ? "Approved Messages source enabled." : "Messages disabled; manual import only.";
+  return <div style={{ marginBottom: 20, color: status.error || metadata?.messages?.error ? T.accent : T.muted, fontFamily: T.sans, fontSize: 12, padding: 12, border: `1px solid ${T.line}`, borderRadius: 8 }}>{status.error ? "Local data unavailable; displayed records may be stale." : `${metadata?.demo ? "SYNTHETIC DEMO · " : ""}Local only · ${source} SMS records may be incomplete. GEL totals omit currencies without a local exchange rate. This is not a bank statement.`}</div>;
+}
+
+function CloudLayout() {
   const [tweaks, setTweaks] = useState<InkTweaks>(() => loadTweaks());
   const theme = useMemo(() => buildTheme(tweaks), [tweaks]);
   const [transitioning, setTransitioning] = useState<boolean>(() => readSetupTransitionFlag());
@@ -123,11 +144,12 @@ function ConfiguredShell() {
             flexDirection: "column",
           }}
         >
+          {LOCAL_ONLY && <LocalLedgerNotice />}
           <Outlet />
         </main>
       </div>
       <TweaksPanel />
-      <SpotlightHost />
+      {!LOCAL_ONLY && <SpotlightHost />}
     </>
   );
 }

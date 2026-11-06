@@ -12,7 +12,7 @@
 //     target + frequency + rollover) but doesn't delete the category
 //     itself. Reversible by re-bucketing.
 
-import { id } from "@instantdb/react";
+import { id } from "../../../lib/local-mode";
 import { db } from "../../instant";
 import {
   anchorMonthFromPlans,

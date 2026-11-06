@@ -3,7 +3,7 @@
 // existing categorizer / payments / credits hooks.
 
 import { useCallback, useMemo } from "react";
-import { id } from "@instantdb/react";
+import { id } from "../lib/local-mode";
 import { db, type BudgetPlan, type Category } from "../lib/instant";
 import { useCategories, useMergedCategories } from "./useCategories";
 import { useConvertedCredits } from "./useCredits";

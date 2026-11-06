@@ -1,3 +1,4 @@
+import { LOCAL_ONLY } from "../lib/local-mode";
 import { NavLink } from "react-router-dom";
 import { useTheme } from "./theme";
 import { Logo, LiveDot } from "./primitives";
@@ -37,7 +38,7 @@ export function Sidebar({
     // attention" the same way Signals uses it for triggered rules.
     // Position between Merchants and Assistant per the design.
     { to: "/plan", name: "Must pay", glyph: "◫", pillBadge: mustPayCount ? String(mustPayCount) : undefined },
-    { to: "/assistant", name: "Assistant", glyph: "✧" },
+    ...(!LOCAL_ONLY ? [{ to: "/assistant", name: "Assistant", glyph: "✧" }] : []),
     { to: "/signals", name: "Signals", glyph: "✦", badge: signalsCount ? String(signalsCount) : undefined },
     { to: "/manage", name: "Manage", glyph: "⚙" },
   ];
@@ -154,12 +155,12 @@ export function Sidebar({
       )}
       <div style={{ padding: 14, background: T.panel, borderRadius: T.rMd, border: `1px solid ${T.line}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-          <LiveDot />
-          <span style={{ fontSize: 12, fontWeight: 600, color: T.text, fontFamily: T.sans }}>Live</span>
-          <span style={{ marginLeft: "auto", fontSize: 10, color: T.dim, fontFamily: T.mono }}>sync</span>
+          {!LOCAL_ONLY && <LiveDot />}
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.text, fontFamily: T.sans }}>{LOCAL_ONLY ? "Local ledger" : "Live"}</span>
+          <span style={{ marginLeft: "auto", fontSize: 10, color: T.dim, fontFamily: T.mono }}>{LOCAL_ONLY ? "bank SMS" : "sync"}</span>
         </div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.4, fontFamily: T.sans }}>
-          Reading Messages.app via local service
+          {LOCAL_ONLY ? "Manual import or an explicitly approved Messages source" : "Reading Messages.app via local service"}
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -182,7 +183,7 @@ export function Sidebar({
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: T.text, fontFamily: T.sans }}>You</div>
-          <div style={{ fontSize: 10, color: T.dim, fontFamily: T.mono }}>self-hosted</div>
+          <div style={{ fontSize: 10, color: T.dim, fontFamily: T.mono }}>{LOCAL_ONLY ? "local only" : "self-hosted"}</div>
         </div>
       </div>
     </aside>

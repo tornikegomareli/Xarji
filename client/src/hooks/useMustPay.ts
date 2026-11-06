@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { id } from "@instantdb/react";
+import { id } from "../lib/local-mode";
 import { db, type MustPayItem, type MustPayState } from "../lib/instant";
 
 const SINGLETON_KEY = "singleton";

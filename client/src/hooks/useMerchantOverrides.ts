@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { id as instantId } from "@instantdb/react";
+import { id as instantId } from "../lib/local-mode";
 import { db, type MerchantCategoryOverride } from "../lib/instant";
 
 export function useMerchantOverrides() {

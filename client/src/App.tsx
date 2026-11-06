@@ -1,3 +1,4 @@
+import { LOCAL_ONLY } from "./lib/local-mode";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { Dashboard, Transactions, Categories, Budgets, Merchants, Income, Signals, Settings, Assistant, Plan } from "./pages";
@@ -14,7 +15,7 @@ function App() {
           <Route path="budgets" element={<Budgets />} />
           <Route path="merchants" element={<Merchants />} />
           <Route path="plan" element={<Plan />} />
-          <Route path="assistant" element={<Assistant />} />
+          <Route path="assistant" element={LOCAL_ONLY ? <Navigate to="/manage" replace /> : <Assistant />} />
           <Route path="signals" element={<Signals />} />
           <Route path="manage" element={<Settings />} />
           {/* Compatibility redirects for the routes that existed in the

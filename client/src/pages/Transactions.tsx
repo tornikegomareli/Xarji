@@ -1,3 +1,4 @@
+import { LOCAL_ONLY } from "../lib/local-mode";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTheme, useViewport, type InkTheme } from "../ink/theme";
@@ -189,7 +190,7 @@ export function Transactions() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search merchant or raw SMS…"
+              placeholder={LOCAL_ONLY ? "Search merchant…" : "Search merchant or raw SMS…"}
               style={{
                 flex: 1,
                 border: "none",
@@ -418,7 +419,7 @@ export function Transactions() {
                     const merchant = selected.merchant || selected.counterparty || "Unknown";
                     if (
                       !window.confirm(
-                        `Delete this transaction?\n\n${merchant} · ${amountStr} · ${dateStr}\n\nIt will be removed from InstantDB and tombstoned so the next SMS sync won't re-import it. This cannot be undone.`
+                        `Delete this transaction?\n\n${merchant} · ${amountStr} · ${dateStr}\n\nIt will be removed from ${LOCAL_ONLY ? "the local ledger" : "InstantDB"} and tombstoned so the next SMS sync won't re-import it. This cannot be undone.`
                       )
                     ) {
                       return;
@@ -433,7 +434,7 @@ export function Transactions() {
                 />
               )}
             </div>
-            <div style={{ marginTop: 18 }}>
+            {!LOCAL_ONLY && <div style={{ marginTop: 18 }}>
               <CardLabel>Raw SMS</CardLabel>
               <div
                 style={{
@@ -452,7 +453,7 @@ export function Transactions() {
               >
                 {selected.rawMessage || "—"}
               </div>
-            </div>
+            </div>}
           </Card>
         )}
       </div>
@@ -560,7 +561,7 @@ function DeleteRow({
         type="button"
         onClick={handle}
         disabled={busy}
-        title="Remove this transaction from InstantDB and tombstone it so SMS resyncs don't re-import it"
+        title={`Remove this transaction from ${LOCAL_ONLY ? "the local ledger" : "InstantDB"} and tombstone it so SMS resyncs don't re-import it`}
         style={{
           padding: "4px 10px",
           borderRadius: 999,

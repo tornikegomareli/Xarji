@@ -3,7 +3,7 @@ import { db, type Category } from "../lib/instant";
 import { DEFAULT_CATEGORIES } from "../lib/utils";
 import { useCategorizer } from "./useCategorizer";
 import { useMerchantOverrides } from "./useMerchantOverrides";
-import { id } from "@instantdb/react";
+import { id } from "../lib/local-mode";
 
 export function useCategories() {
   const { data, isLoading, error } = db.useQuery({ categories: {} });

@@ -14,7 +14,12 @@ import react from "@vitejs/plugin-react";
 const API_TARGET = process.env.XARJI_SERVICE_URL ?? "http://127.0.0.1:8721";
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react()],
+  plugins: [react(), {
+    name: "local-fonts",
+    transformIndexHtml(html) {
+      return mode === "local-only" ? html.replace(/\s*<link[^>]+https:\/\/fonts\.(?:googleapis|gstatic)\.com[^>]*>/g, "") : html;
+    },
+  }],
   // Single greppable literal in the bundle. `scripts/release/build.sh`
   // greps `client/dist/` for `__XARJI_DEMO_ALLOWED__:true` (and the
   // other demo-mode strings) and fails the DMG build if any of them
@@ -22,6 +27,7 @@ export default defineConfig(({ mode }) => ({
   // tree-shake regression that would otherwise leak demo code into
   // production silently.
   define: {
+    "import.meta.env.VITE_XARJI_LOCAL_ONLY": JSON.stringify(mode === "local-only" ? "true" : "false"),
     __XARJI_DEMO_ALLOWED__: JSON.stringify(mode === "development"),
   },
   server: {

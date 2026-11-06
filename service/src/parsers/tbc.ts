@@ -32,14 +32,14 @@
 
 import type { RawMessage } from "../db-reader";
 import type { BankParser, Transaction, TransactionKind, TransactionStatus } from "./types";
-import { directionOf } from "./types";
+import { directionOf } from "./types.ts";
 import {
   generateTransactionId,
   parseFlexibleAmount,
   parseDateSlashed,
   stripTrailingNoise,
   mergeDateAndTime,
-} from "./shared";
+} from "./shared.ts";
 
 const BANK_KEY = "TBC";
 

@@ -10,6 +10,7 @@ import type { RawMessage } from "../db-reader";
 import type { BankParser, ParseResult, Transaction } from "./types";
 import { soloParser } from "./solo";
 import { tbcParser } from "./tbc";
+import { isSecurityMessage } from "./security";
 
 export type { BankParser, ParseResult, Transaction } from "./types";
 export type {
@@ -39,19 +40,22 @@ export function allBanks(): readonly BankParser[] {
  * any registered parser's recognised kinds (marketing, codes, notices, …).
  */
 export function parseMessage(raw: RawMessage): Transaction | null {
+  if (isSecurityMessage(raw.text)) return null;
   const parser = getParserForSender(raw.senderId);
   if (!parser) return null;
   return parser.parse(raw);
 }
 
 /**
- * Bulk parse. Messages that fail routing *or* per-bank parsing are collected
+ * Bulk parse. Security messages are omitted. Other messages that fail routing
+ * or per-bank parsing are collected
  * into `failed` so callers can log them for diagnosis.
  */
 export function parseMessages(messages: readonly RawMessage[]): ParseResult {
   const success: Transaction[] = [];
   const failed: RawMessage[] = [];
   for (const msg of messages) {
+    if (isSecurityMessage(msg.text)) continue;
     const tx = parseMessage(msg);
     if (tx) success.push(tx);
     else failed.push(msg);

@@ -121,6 +121,7 @@ and update them in the same commit.
 | [merchants.md](merchants.md) | `client/src/pages/Merchants.tsx` — table, search, drill-down rows | 2026-04-27 (PR #23) |
 | [income.md](income.md) | `client/src/pages/Income.tsx` — hero, income trend, ledger | 2026-04-27 (PR #23) |
 | [manage.md](manage.md) | `client/src/pages/Settings.tsx` mounted at `/manage` — Sync now button, CSRF, partial-failure UI | 2026-04-27 (PR #22) |
+| [local.md](local.md) | Optional SQLite build — auth, local mutations, source guard, loopback requests | 2026-10-08 (T-LOCAL-01/02/04; 03 partial, import covered by automated tests) |
 | [assistant.md](assistant.md) | `AssistantChat.tsx` + orchestrator — empty state, streaming, multi-turn memory, autoscroll, long-loop survival | 2026-04-27 (PR #27) |
 | [ranges.md](ranges.md) | Cross-cutting `useRangeState` + `dateRange.ts` invariants and Codex-fix regressions | 2026-04-27 (PR #23) |
 
@@ -128,7 +129,7 @@ and update them in the same commit.
 
 Each test has an ID `T-<AREA>-<NN>`:
 
-- `AREA` = uppercase short tag: `DASH`, `TX`, `CAT`, `MERCH`, `INC`, `MGT`, `AI`, `RANGE`.
+- `AREA` = uppercase short tag: `DASH`, `TX`, `CAT`, `MERCH`, `INC`, `MGT`, `AI`, `RANGE`, `LOCAL`.
 - `NN` = two-digit zero-padded sequence within the file. Numbers don't get
   reused — if you delete a test, leave a gap (or repurpose the ID with a
   comment) so old PR references still make sense.

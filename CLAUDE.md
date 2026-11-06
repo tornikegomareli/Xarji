@@ -13,6 +13,16 @@ Working context for Claude Code sessions in this repo. Read it all before making
 - Storage: every parsed transaction is written to an **InstantDB** app the user creates themselves (free tier, their credentials). No Xarji-owned backend exists. A JSON backup at `~/.xarji/transactions.json` is the last-line-of-defense copy.
 - UI: a React dashboard served by the app's own HTTP server on `127.0.0.1:8721`, accessed via the browser. A small Swift menu-bar app shows live status and gives the user a "Open dashboard" / "Quit" entry point.
 
+An optional standalone Node runtime in `local/` supports local-only TBC tracking.
+Read `local/README.md` before editing it. It uses private SQLite and a separately
+built `client/dist-local` (`bun run build:local`), shares pure TBC/text parsers, and
+starts without Messages access. It must never load cloud config/credentials or
+fall back to InstantDB, AI, webhooks or online exchange rates. The default Bun,
+InstantDB and native release workflow remains the default. The shared OTP/security
+guard also applies to cloud parsing, before reading a transaction from the SMS. Run
+`node --test local/local.test.mjs` and build both client modes for changes that
+touch this integration. All local-mode fixtures/demo data must be synthetic.
+
 **Intentional non-goals**:
 
 - No cloud service Xarji runs. No Xarji account. No billing. No analytics.

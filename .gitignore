@@ -3,6 +3,12 @@
 
 # Build + release artefacts — regenerated from source.
 dist/
+client/dist-local/
+local/var/
+local/demo-var/
+**/ui.token
+**/agent-read.token
+**/ledger.sqlite*
 
 # Local release configuration (signing identity, notary profile name).
 # .release.env.example is committed so others know what variables are

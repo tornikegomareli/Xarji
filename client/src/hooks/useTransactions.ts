@@ -1,3 +1,4 @@
+import { LOCAL_ONLY } from "../lib/local-mode";
 import { useMemo } from "react";
 import { db, type Payment } from "../lib/instant";
 import { groupBy, getDateGroup } from "../lib/utils";
@@ -73,7 +74,7 @@ export function useTransactionDelete() {
     instantId: string,
     transactionId: string
   ): Promise<void> => {
-    if (isDemoMode()) {
+    if (LOCAL_ONLY || isDemoMode()) {
       const collection = kind === "payment" ? db.tx.payments : db.tx.credits;
       await db.transact(collection[instantId].delete());
       return;

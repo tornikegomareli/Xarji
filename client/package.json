@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "bun test src"
+    "test": "bun test src",
+    "build:local": "tsc -b && vite build --mode local-only --outDir dist-local"
   },
   "dependencies": {
     "@instantdb/react": "^0.22.106",

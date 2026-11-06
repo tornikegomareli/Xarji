@@ -1,3 +1,4 @@
+import { LOCAL_ONLY } from "./local-mode";
 // Lazy converter that turns a foreign-currency amount into its GEL
 // equivalent using NBG's per-day rate. Hits /api/exchange-rate when a
 // rate isn't already in the in-memory cache; subscribed components
@@ -18,6 +19,7 @@ import { formatLocalDay } from "../ink/format";
 type RatesByCurrency = Map<string, number>;
 
 const cache = new Map<string, RatesByCurrency>();
+const missingLocal = new Map<string, number>();
 const inflight = new Map<string, Promise<void>>();
 const subscribers = new Set<() => void>();
 
@@ -66,7 +68,7 @@ function persistToStorage() {
   }
 }
 
-if (typeof window !== "undefined") loadFromStorage();
+if (!LOCAL_ONLY && typeof window !== "undefined") loadFromStorage();
 
 function notify() {
   for (const fn of subscribers) fn();
@@ -74,13 +76,14 @@ function notify() {
 
 async function fetchRatesForDate(dateStr: string): Promise<void> {
   if (cache.has(dateStr)) return;
+  if (LOCAL_ONLY && (missingLocal.get(dateStr) ?? 0) > Date.now() - 30000) return;
   const existing = inflight.get(dateStr);
   if (existing) return existing;
 
   const promise = (async () => {
     try {
       const res = await fetch(`/api/exchange-rate?date=${dateStr}&lang=en&codes=${CODES}`);
-      if (!res.ok) return;
+      if (!res.ok) { if (LOCAL_ONLY) missingLocal.set(dateStr, Date.now()); return; }
       const body = (await res.json()) as { rates?: Record<string, { rate: number }> };
       const rates: RatesByCurrency = new Map();
       for (const [code, info] of Object.entries(body.rates ?? {})) {
@@ -89,7 +92,7 @@ async function fetchRatesForDate(dateStr: string): Promise<void> {
         }
       }
       cache.set(dateStr, rates);
-      persistToStorage();
+      if (!LOCAL_ONLY) persistToStorage();
       notify();
     } catch {
       /* network/server error — cache stays empty, converter keeps
