@@ -97,8 +97,9 @@ const RE_TANXA = /(?:თანხა|[Tt]anxa):\s*([\d.,]+)\s*([A-Z]{3})/;
 const RE_CARD_AMOUNT = /^\s*\)?\s*([\d.,]+)\s*([A-Z]{3})\s*$/m;
 
 // ── Card number extraction ─────────────────────────────────────────────────
-const RE_CARD_PARENS = /\(\s*\*{3,}'?(\d{3,4})'?\s*\)/;
+const RE_CARD_PARENS = /\(\s*(?:\*{3,}'?(\d{3,4})'?|\*(?:(\d{3,4})|'(\d{3,4})'))\s*\)/;
 const RE_CARD_STARS  = /\*{3,}(\d{3,4})/;
+const RE_OTP = /\b(?:sms\s+code|otp|one[ -]?time\s+(?:code|password)|verification\s+code|security\s+code)\b|\bpin\s*:|ერთჯერადი\s+კოდი|კოდი\s*:|პაროლი\s*:/iu;
 
 // ── Balance (ნაშთი / Nashti: NNN CUR) ─────────────────────────────────────
 // Real-world TBC SMS varies the casing — "Nashti:" on most card-payment SMS
@@ -148,7 +149,7 @@ function detect(text: string): Detected | null {
 
 function parseCard(text: string): string | null {
   const m = text.match(RE_CARD_PARENS) ?? text.match(RE_CARD_STARS);
-  return m ? m[1] : null;
+  return m ? m[1] ?? m[2] ?? m[3] : null;
 }
 
 /** Merchant for card payments: the line immediately after the card-number line.
@@ -158,7 +159,7 @@ function parseCard(text: string): string | null {
 function parseMerchantFromCard(text: string): string | null {
   const lines = text.trim().split(/\r?\n/).map(stripTrailingNoise).filter(Boolean);
   for (let i = 0; i < lines.length; i++) {
-    if (RE_CARD_STARS.test(lines[i])) {
+    if (RE_CARD_PARENS.test(lines[i]) || RE_CARD_STARS.test(lines[i])) {
       // Multi-line: merchant is the next line after the card line.
       if (lines[i + 1] != null) return lines[i + 1];
       // Inline single-line shape: card-parens + merchant + date sit on the
@@ -217,6 +218,7 @@ function parseBillMerchant(text: string): string | null {
 }
 
 function parse(raw: RawMessage): Transaction | null {
+  if (RE_OTP.test(raw.text)) return null;
   // Skip own-account transfers before any further processing.
   if (RE_SELF.test(raw.text)) return null;
 
